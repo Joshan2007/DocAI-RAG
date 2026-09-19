@@ -97,13 +97,16 @@ class RAGEvaluator:
         if citations:
             return len(citations)
 
-        # The Streamlit UI intentionally avoids noisy inline markers and shows
-        # source attribution separately, so count the retrieved source documents.
-        sources = {
-            chunk.metadata.get("source_file", "Unknown")
+        # The Streamlit UI shows source attribution separately, so count each
+        # unique source-page pair represented in the retrieved evidence.
+        source_pages = {
+            (
+                chunk.metadata.get("source_file", "Unknown"),
+                chunk.metadata.get("page_number", 1),
+            )
             for chunk in retrieved_chunks
         }
-        return len(sources)
+        return len(source_pages)
 
     @classmethod
     def evaluate(
