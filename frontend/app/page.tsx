@@ -26,7 +26,9 @@ const getApiHeaders = (extra: Record<string, string> = {}) => ({
 const getApiUrl = (path: string) => {
   if (typeof window !== "undefined") {
     const custom = localStorage.getItem("docai_backend_url");
-    if (custom && custom.trim()) {
+    // Only use custom URL if it is explicitly configured and not localtunnel
+    // (localtunnel goes through Vercel's same-origin rewrite to prevent browser security blocks)
+    if (custom && custom.trim() && !custom.includes("loca.lt")) {
       return `${custom.trim().replace(/\/$/, "")}${path}`;
     }
     if (
@@ -35,14 +37,12 @@ const getApiUrl = (path: string) => {
     ) {
       return `http://127.0.0.1:8000${path}`;
     }
-    if (process.env.NEXT_PUBLIC_API_URL) {
-      return `${process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, "")}${path}`;
-    }
-    return `${DEFAULT_TUNNEL_URL}${path}`;
   }
-  if (process.env.NEXT_PUBLIC_API_URL) {
+  if (process.env.NEXT_PUBLIC_API_URL && !process.env.NEXT_PUBLIC_API_URL.includes("loca.lt")) {
     return `${process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, "")}${path}`;
   }
+  // On production (e.g. Vercel), use same-origin relative path /api/...
+  // Next.js rewrites proxy this server-side with zero CORS, zero mixed content, and zero browser blocking!
   return path;
 };
 
@@ -124,16 +124,20 @@ export default function Home() {
       setGeminiKeyInput(savedGemini);
     }
     const savedBackend = localStorage.getItem("docai_backend_url");
-    if (savedBackend) {
+    if (
+      savedBackend &&
+      (savedBackend.includes("loca.lt") ||
+        (typeof window !== "undefined" &&
+          window.location.hostname !== "localhost" &&
+          window.location.hostname !== "127.0.0.1" &&
+          savedBackend.includes("127.0.0.1")))
+    ) {
+      localStorage.removeItem("docai_backend_url");
+      setBackendUrl("");
+      setBackendUrlInput("");
+    } else if (savedBackend) {
       setBackendUrl(savedBackend);
       setBackendUrlInput(savedBackend);
-    } else if (
-      typeof window !== "undefined" &&
-      window.location.hostname !== "localhost" &&
-      window.location.hostname !== "127.0.0.1"
-    ) {
-      setBackendUrl(DEFAULT_TUNNEL_URL);
-      setBackendUrlInput(DEFAULT_TUNNEL_URL);
     }
     const savedModel = localStorage.getItem("docai_selected_model");
     if (savedModel && AVAILABLE_MODELS.some((m) => m.id === savedModel)) {
@@ -194,7 +198,19 @@ export default function Home() {
         body: formData,
       });
       if (!res.ok) {
-        throw new Error(`Upload returned status ${res.status}`);
+        let errDetail = `Status ${res.status}`;
+        try {
+          const errJson = await res.json();
+          if (errJson.detail) {
+            errDetail = typeof errJson.detail === "string" ? errJson.detail : JSON.stringify(errJson.detail);
+          }
+        } catch (e) {
+          try {
+            const errText = await res.text();
+            if (errText) errDetail = errText.slice(0, 150);
+          } catch (e2) {}
+        }
+        throw new Error(errDetail);
       }
       const data = await res.json();
       if (data.uploaded) {
@@ -907,9 +923,24 @@ export default function Home() {
                 placeholder="https://docai-joshan.loca.lt or https://docai.onrender.com"
                 className="w-full px-3 py-2 rounded-lg border border-[#D5D3CC] focus:border-[#CC785C] focus:ring-1 focus:ring-[#CC785C] outline-none text-xs font-mono bg-white"
               />
-              <p className="text-[11px] text-[#82807A] leading-relaxed">
-                Enter your live FastAPI backend URL (e.g. Render, Railway, or tunnel). Leave blank for local development.
-              </p>
+              <div className="flex items-center justify-between pt-1 text-[11px]">
+                <span className="text-[#82807A]">
+                  Default: Seamless Vercel Cloud Proxy
+                </span>
+                {backendUrl && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBackendUrl("");
+                      setBackendUrlInput("");
+                      localStorage.removeItem("docai_backend_url");
+                    }}
+                    className="text-[#CC785C] hover:underline font-medium"
+                  >
+                    Reset to Default
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Gemini API Key Config */}
