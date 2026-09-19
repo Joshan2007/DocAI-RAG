@@ -3,7 +3,7 @@
 [![Streamlit](https://img.shields.io/badge/App-Streamlit-FF4B4B.svg?style=for-the-badge&logo=streamlit)](https://streamlit.io/)
 [![ChromaDB](https://img.shields.io/badge/VectorStore-ChromaDB-purple.svg?style=for-the-badge)](https://www.trychroma.com/)
 [![Hybrid Retrieval](https://img.shields.io/badge/Retrieval-BM25%20%2B%20Dense%20(RRF)-green.svg?style=for-the-badge)]()
-[![Gemini](https://img.shields.io/badge/LLM-Google%20Gemini%20Flash%20%26%20Pro-4285F4.svg?style=for-the-badge&logo=google)](https://aistudio.google.com/)
+[![Gemini](https://img.shields.io/badge/LLM-Google%20Gemini%202.5%20%26%202.0-4285F4.svg?style=for-the-badge&logo=google)](https://aistudio.google.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 
 ## Live Demo
@@ -23,7 +23,7 @@ flowchart TD
         PARSER --> CHUNKER["DocumentChunker\n(600 chars, 120-char sliding overlap,\nmetadata preservation: page, sheet, chunk_id)"]
         CHUNKER --> DENSE_EMB["ONNX all-MiniLM-L6-v2 Embeddings\n(384-dimensional dense vectors)"]
         CHUNKER --> SPARSE_TOK["BM25Okapi Tokenizer\n(Alphanumeric keyword index)"]
-        DENSE_EMB --> CHROMA[("Persistent ChromaDB Vector Store")]
+        DENSE_EMB --> CHROMA[("ChromaDB Vector Store\n(In-Memory Isolated Collections)")]
         SPARSE_TOK --> BM25_IDX[("In-Memory BM25 Lexical Index")]
     end
 
