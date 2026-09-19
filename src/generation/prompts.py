@@ -1,6 +1,6 @@
 """
 Prompt templates and formatting for DocAI.
-Enforces strict factual grounding, explicit source citations, and query contextualization.
+Enforces strict factual grounding and query contextualization.
 """
 
 from typing import List, Dict
@@ -19,9 +19,7 @@ class RAGPromptManager:
         "RESPONSE RULES:\n"
         "1. Direct Answer First: Immediately after the </thought> closing tag, provide your final direct response. Do NOT repeat or explain your thinking process in the answer.\n"
         "2. Clean Text (No Inline Citations): Do NOT insert clumsy bracketed citations (like [Doc: ..., Page ...]) inside sentences or paragraphs. Write smooth, readable, professional prose.\n"
-        "3. Citations After the Answer: At the very end of your response, provide a dedicated '### Sources' section listing the documents and pages referenced, e.g.:\n"
-        "   ### Sources\n"
-        "   * **filename** — Page(s) X, Y\n"
+        "3. Source Formatting: Do not add a '### Sources' section or repeat the document metadata; the application displays retrieved sources separately when requested.\n"
         "4. Thoroughness: Directly answer all parts of the user's question with depth, structured formatting (clear headings, bullet points, and bold key terms).\n"
         "5. If a topic is covered in the excerpts (e.g. assignment tasks, problem statements, requirements), provide a complete and detailed breakdown of what the document specifies."
     )
@@ -58,7 +56,7 @@ class RAGPromptManager:
         user_content = (
             f"CONTEXT EXCERPTS:\n{context_block}\n\n"
             f"USER QUESTION: {query}\n\n"
-            f"ANSWER (Ground your answer strictly in the excerpts above, citing sources like [Doc: filename, Page X]):"
+            f"ANSWER (Ground your answer strictly in the excerpts above. Do not add a Sources section or inline citation markers):"
         )
         return user_content
 

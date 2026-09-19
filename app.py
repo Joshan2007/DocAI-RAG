@@ -54,6 +54,7 @@ def split_thought(text: str) -> tuple[str, str]:
 
     thought = thought_match.group(1).strip()
     answer = (text[:thought_match.start()] + text[thought_match.end():]).strip()
+    answer = re.split(r"\n#{1,3}\s*Sources\s*:?.*", answer, maxsplit=1, flags=re.IGNORECASE | re.DOTALL)[0].strip()
     return thought, answer
 
 
