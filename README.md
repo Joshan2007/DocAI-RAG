@@ -5,11 +5,9 @@
 [![ChromaDB](https://img.shields.io/badge/VectorStore-ChromaDB-purple.svg?style=for-the-badge)](https://www.trychroma.com/)
 [![Hybrid Retrieval](https://img.shields.io/badge/Retrieval-BM25%20%2B%20Dense%20(RRF)-green.svg?style=for-the-badge)]()
 [![Gemini](https://img.shields.io/badge/LLM-Google%20Gemini%20Flash%20%26%20Pro-4285F4.svg?style=for-the-badge&logo=google)](https://aistudio.google.com/)
-[![Tests](https://img.shields.io/badge/Tests-21%2F21%20Passed%20(100%25)-brightgreen.svg?style=for-the-badge)]()
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 
 **DocAI** is an advanced, production-grade AI Knowledge Assistant engineered to ingest, index, and query complex multi-domain documents (enterprise policies, scientific research papers, financial spreadsheets, technical specifications, and student coursework) with zero hallucination, verifiable citations, dynamic Claude-style thinking, and real-time retrieval evaluation.
-
-Developed for the **Lunorsoft Internship Recruitment Round 1 (Option 1: AI Developer — Build a Mini AI Knowledge Assistant)**.
 
 ---
 
@@ -59,18 +57,82 @@ flowchart TD
 
 ---
 
-## 🌟 Key Highlights & Why DocAI Stands Out
+## 🔬 Engineering Approach & Technical Implementation
 
-Most basic RAG submissions rely on naive cosine similarity searches over arbitrary character splits, which fail when encountering exact terminology, acronyms, or out-of-domain questions. **DocAI solves these fundamental failure modes:**
+DocAI was engineered to overcome the core vulnerabilities of traditional Retrieval-Augmented Generation: keyword blindness, hallucinations, clumsy citations, and catastrophic failures during API rate-limits.
 
-1. **Hybrid Retrieval (Dense + Sparse via RRF)**: Combines dense vector semantics (`all-MiniLM-L6-v2` / ChromaDB) with sparse lexical precision (`BM25Okapi`). Merged using **Reciprocal Rank Fusion (RRF)** ($k=60$) so neither exact keyword tokens nor high-level concepts are lost.
-2. **Dynamic Claude-Style Thinking Engine**: Rather than generic static bullets, Gemini streams its genuine internal reasoning (`event: thinking_token`) inside an expandable, shimmering accordion drawer before delivering the answer.
-3. **Strict Factual Grounding & Anti-Hallucination Guardrails**: The LLM is bounded by system instructions that enforce factual containment and transparent refusal when the context lacks supporting evidence.
-4. **Individual Document Deletion & Self-Healing Index**: Uploaded documents appear as interactive capsules with an `✕` button. Deleting a document instantly deletes its records from ChromaDB, re-tokenizes the corpus, and rebuilds the BM25 index with zero index errors.
-5. **Interactive Source Citation Inspector**: Every answer provides an expandable source breakdown displaying exact page/sheet numbers, snippet text, similarity scores, and retrieval origin (`Dense`, `BM25`, or `Both`).
-6. **Built-in RAG Triad Telemetry**: Monitors **Retrieval Relevance**, **Groundedness / Faithfulness**, and latency (retrieval vs. generation time) per query.
-7. **Pure Google Gemini Model Suite**: Exclusively powered by Gemini (`gemini-1.5-flash`, `gemini-2.0-flash`, `gemini-1.5-pro`, `gemini-2.5-flash`) with dynamic in-box switching and automatic quota rollover.
-8. **Bulletproof Zero-Crash Resilience**: If Gemini encounters rate limits (`429 RESOURCE_EXHAUSTED`) or network failure, the **Local Grounded Synthesizer** takes over, extracting and presenting verified facts with zero crashes.
+### 1. Multi-Format Ingestion & Semantic Chunking Strategy
+- **Universal Document Parsing**: A unified abstraction layer ([`src/ingestion/parser.py`](src/ingestion/parser.py)) parses heterogeneous file formats into structured text objects while preserving document geometry:
+  - **PDF**: Page-by-page text extraction with footer/header stripping via `pypdf`.
+  - **Microsoft Word (`.docx`)**: Structural extraction preserving heading hierarchies and nested table cells via `python-docx`.
+  - **Excel Spreadsheets (`.xlsx`, `.xls`)**: Tabular serialization preserving workbook sheet names, row indices, and cell formatting via `openpyxl`.
+  - **Delimited Files (`.csv`, `.tsv`)**: Normalizes rows into readable, column-annotated natural language records.
+  - **Plain Text & Markdown (`.md`, `.txt`, `.py`, `.json`)**: Robust multi-encoding UTF-8/Latin-1 fallback decoding.
+- **Context-Aware Sliding Window Chunking**: Rather than splitting blindly at arbitrary character counts (which severs sentences and compounds errors), [`src/ingestion/chunker.py`](src/ingestion/chunker.py) uses a sliding window of **600 characters with 120-character overlap** split along linguistic boundaries (paragraphs $\to$ sentences $\to$ clauses). Every chunk retains immutable metadata: `source_file`, `page_number`, `sheet_name`, and `chunk_index`.
+
+---
+
+### 2. Dual-Index Hybrid Retrieval (Dense Vector + BM25Okapi)
+Single-mode retrieval architectures suffer from fundamental trade-offs:
+- **Dense Vector Search** (`all-MiniLM-L6-v2` / ChromaDB) excels at semantic understanding and conversational synonyms, but struggles with exact alphanumeric strings, error codes, and unique identifiers.
+- **Sparse Lexical Search** (BM25Okapi) provides exact term-matching precision for acronyms, function names, and technical codes (`AES-256`, `CS-482`, `P95`), but fails when queries use paraphrased phrasing.
+
+DocAI implements a **parallel dual-index architecture**:
+1. **Dense Vector Store** ([`src/retrieval/vector_store.py`](src/retrieval/vector_store.py)): Fast, local ONNX embeddings indexed into persistent ChromaDB collections with cosine distance metric.
+2. **Sparse Lexical Index** ([`src/retrieval/bm25_retriever.py`](src/retrieval/bm25_retriever.py)): An in-memory BM25Okapi inverted index tokenized on alphanumeric boundaries.
+
+---
+
+### 3. Reciprocal Rank Fusion (RRF, $k=60$)
+To merge the disjoint ranked candidate lists from Dense and Sparse search without scale bias, DocAI utilizes **Reciprocal Rank Fusion (RRF)**:
+
+$$RRF\_score(d) = \sum_{m \in \{dense, sparse\}} \frac{1}{k + rank_m(d)}$$
+
+Where:
+- $rank_m(d)$ is the 1-based rank position of document $d$ within retrieval method $m$.
+- $k$ is the smoothing constant set to **60** (industry standard).
+
+**Why RRF is superior to Linear Score Weighting:**
+Score normalization across different retrieval modalities (e.g. cosine similarity range $[0, 1]$ vs. unbounded BM25 scores $[0, \infty)$) is notoriously sensitive to document length and query specificity. RRF operates solely on **relative rank order**, ensuring that items retrieved highly by both methods receive a dominant boost, while preserving high-confidence unique hits from either retriever.
+
+---
+
+### 4. Dynamic Claude-Style Thinking & Dual-Stream Generation
+- **Dynamic Reasoning Extraction**: Modern models produce higher quality, better grounded answers when allowed to reason through evidence before speaking. DocAI instructs Gemini via system prompts to formulate an explicit thought trace inside `<thought>...</thought>` tags.
+- **Dual-Stream Server-Sent Events (SSE)**: Rather than buffering or dumping raw thought tags on screen, the FastAPI backend ([`backend/server.py`](backend/server.py)) parses tokens on-the-fly and streams two distinct event channels:
+  1. `event: thinking_token`: Populates the collapsible Claude-style contemplation drawer with subtle shimmer animation in real-time.
+  2. `event: token`: Paces answer tokens chunk-by-chunk using a natural typewriter animation directly into the message body.
+- **Pure Google Gemini Architecture**: Configured for high-throughput, low-latency reasoning across four specialized models:
+  - **Gemini 1.5 Flash** (Default • Recommended general assistant)
+  - **Gemini 2.0 Flash** (Next-Gen high-speed multimodal reasoning)
+  - **Gemini 1.5 Pro** (Deep reasoning for complex multi-document synthesis)
+  - **Gemini 2.5 Flash** (Experimental preview reasoning engine)
+
+---
+
+### 5. Anti-Hallucination Guardrails & Zero-Crash Resilience
+- **Strict Factual Containment**: The generation prompt ([`src/generation/prompts.py`](src/generation/prompts.py)) establishes strict guardrails: answers must be derived *exclusively* from retrieved passages. When facts are absent or ambiguous, the model is explicitly constrained to state that insufficient information is available.
+- **Dedicated Non-Intrusive Citations**: In-text superscript interruptions fragment reading comprehension. DocAI formats citations cleanly *after* the synthesized answer, providing structured citation cards with source filenames, page numbers, relevance confidence scores, and verbatim excerpt quotes.
+- **Graceful Quota Degradation**: If Google AI Studio returns `429 RESOURCE_EXHAUSTED`, DocAI automatically cascades across fallback models. If completely offline or unauthenticated, the **Local Grounded Synthesizer** takes over, extracting and presenting verified facts deterministically with zero system crashes.
+
+---
+
+### 6. Automated RAG Triad Telemetry & Quality Assessment
+Every synthesized answer is evaluated in real-time by [`src/evaluation/evaluator.py`](src/evaluation/evaluator.py) against the **RAG Triad**:
+1. **Retrieval Relevance**: Measures token-level intent overlap between the user's query and the top retrieved passages.
+2. **Groundedness / Faithfulness**: Computes the ratio of synthesized claims that are verified by retrieved passage content (preventing hallucinations).
+3. **Citation Coverage**: Verifies that assertions link directly back to indexed documents.
+4. **Latency Profiling**: Reports separate latency metrics for retrieval phase ($t_{retrieval}$) versus LLM token synthesis ($t_{generation}$) in milliseconds.
+
+---
+
+### 7. Granular Document Lifecycle & Self-Healing Index
+Unlike primitive RAG demos where the entire database must be wiped to update documents, DocAI features an interactive document manager:
+- Each uploaded file is rendered as an individual capsule chip in the input interface.
+- Clicking the `✕` button triggers `DELETE /api/documents/{filename}`:
+  1. Identifies and purges all associated chunk IDs from the ChromaDB collection.
+  2. Removes the file's text from memory and re-tokenizes the remaining corpus.
+  3. Rebuilds the BM25Okapi index dynamically in sub-second time without index corruptions or restart requirements.
 
 ---
 
@@ -88,64 +150,6 @@ Most basic RAG submissions rely on naive cosine similarity searches over arbitra
 | **Conversational Memory**| Single turn or naive concatenation | **Follow-up Query Contextualizer & Reformulation** |
 | **Quality Evaluation** | None (Anecdotal inspection) | **Automated RAG Triad Telemetry (Groundedness, Relevance, Latency)** |
 | **Quota Resilience** | Crashes on 429 or quota limit | **Automatic Gemini model rollover + Local Grounded Synthesizer** |
-
----
-
-## 📋 Lunorsoft Recruitment Requirements Compliance Matrix
-
-Every single core requirement and bonus feature specified in the Lunorsoft recruitment document has been implemented and tested:
-
-| # | Lunorsoft Requirement | Implementation in DocAI | Test Status |
-|:---:|:---|:---|:---:|
-| **1** | **Multi-document knowledge source** | Supports PDF, Word (`.docx`), Excel (`.xlsx`), CSV, Markdown (`.md`), and Plain Text (`.txt`). Sample portfolio included in `sample_docs/`. | ✅ **PASSED** |
-| **2** | **Document extraction & processing** | Robust `DocumentParser` using `pypdf`, `python-docx`, `openpyxl`, and UTF-8 decoders with text normalization. | ✅ **PASSED** |
-| **3** | **Semantic chunking with overlap** | `DocumentChunker` splits on natural linguistic boundaries (paragraphs, sentences) with 600-char size and 120-char overlap. | ✅ **PASSED** |
-| **4** | **Embedding generation & vector storage** | Persistent ChromaDB vector store with ONNX `all-MiniLM-L6-v2` dense embeddings. | ✅ **PASSED** |
-| **5** | **Hybrid Retrieval Engine** | Dense vector search combined with BM25Okapi lexical search via Reciprocal Rank Fusion (RRF, $k=60$). | ✅ **PASSED** |
-| **6** | **Accept user questions** | Natural language queries via Next.js web chat interface, SSE streaming, and REST API. | ✅ **PASSED** |
-| **7** | **LLM Answer Generation** | Pure Google Gemini suite (`gemini-1.5-flash`, `gemini-2.0-flash`, `gemini-1.5-pro`, `gemini-2.5-flash`) + fallback synthesizer. | ✅ **PASSED** |
-| **8** | **Grounded in Knowledge Source** | Answers constrained strictly to retrieved context. RAG Triad automated evaluation (`is_grounded=True`, groundedness > 0.65). | ✅ **PASSED** |
-| **9** | **Simple, usable interface** | Claude-style Next.js 14 UI with warm paper palette, dynamic thinking drawer, individual document deletion chips, and model switcher. | ✅ **PASSED** |
-| **Bonus 1** | **Document Citations** | Explicit citations containing source filename, page/sheet number, relevance score, and excerpt snippet. | ✅ **PASSED** |
-| **Bonus 2** | **Multi-Turn Conversation History** | Rolling conversation memory buffer with query contextualization for follow-up questions. | ✅ **PASSED** |
-| **Bonus 3** | **Multiple Documents simultaneously** | Multi-document upload, aggregate indexing, and cross-document synthesis. | ✅ **PASSED** |
-| **Bonus 4** | **Evaluation Metrics** | Automated RAG Triad scores returned with every response (Relevance, Groundedness, Citation Coverage, Latency). | ✅ **PASSED** |
-| **Bonus 5** | **Production Deployment Readiness** | Zero-error Next.js 14 production build for Vercel + containerized backend (`Dockerfile`, `render.yaml`). | ✅ **PASSED** |
-
----
-
-## 🧪 Comprehensive Automated Test Results (21 / 21 PASSED ✅)
-
-```text
-============================= test session starts =============================
-platform win32 -- Python 3.12.10, pytest-9.1.1
-rootdir: C:\Users\Joshan\OneDrive\Documents\RAG
-collected 21 items
-
-tests/test_end_to_end.py::test_end_to_end_pipeline PASSED                                [  4%]
-tests/test_full_system_verification.py::TestLunorsoftRequirements::test_01_multi_format_ingestion_and_parsing PASSED          [  9%]
-tests/test_full_system_verification.py::TestLunorsoftRequirements::test_02_semantic_chunking_and_metadata_preservation PASSED  [ 14%]
-tests/test_full_system_verification.py::TestLunorsoftRequirements::test_03_full_pipeline_multi_doc_indexing PASSED            [ 19%]
-tests/test_full_system_verification.py::TestLunorsoftRequirements::test_04_hybrid_rrf_retrieval_and_keyword_precision PASSED [ 23%]
-tests/test_full_system_verification.py::TestLunorsoftRequirements::test_05_grounded_answer_synthesis_and_zero_crash_resilience PASSED [ 28%]
-tests/test_full_system_verification.py::TestLunorsoftRequirements::test_06_multi_turn_conversational_history PASSED          [ 33%]
-tests/test_full_system_verification.py::TestLunorsoftRequirements::test_07_individual_document_deletion_and_reindexing PASSED  [ 38%]
-tests/test_full_system_verification.py::TestLunorsoftRequirements::test_08_dynamic_gemini_model_switching PASSED            [ 42%]
-tests/test_full_system_verification.py::TestLunorsoftRequirements::test_09_live_fastapi_server_endpoints PASSED              [ 47%]
-tests/test_full_system_verification.py::TestLunorsoftRequirements::test_10_live_sse_chat_stream PASSED                      [ 52%]
-tests/test_rag_pipeline.py::TestDocAIIngestion::test_parser_clean_text PASSED                   [ 57%]
-tests/test_rag_pipeline.py::TestDocAIIngestion::test_parser_markdown_text PASSED                [ 61%]
-tests/test_rag_pipeline.py::TestDocAIIngestion::test_parser_docx PASSED                         [ 66%]
-tests/test_rag_pipeline.py::TestDocAIIngestion::test_parser_csv PASSED                          [ 71%]
-tests/test_rag_pipeline.py::TestDocAIIngestion::test_parser_excel PASSED                        [ 76%]
-tests/test_rag_pipeline.py::TestDocAIIngestion::test_chunker_basic_splitting PASSED            [ 80%]
-tests/test_rag_pipeline.py::TestDocAIRetrieval::test_bm25_retrieval PASSED                      [ 85%]
-tests/test_rag_pipeline.py::TestDocAIRetrieval::test_rrf_scoring_logic PASSED                 [ 90%]
-tests/test_rag_pipeline.py::TestDocAIGenerationAndEvaluation::test_prompt_formatting PASSED    [ 95%]
-tests/test_rag_pipeline.py::TestDocAIGenerationAndEvaluation::test_evaluator_metrics PASSED    [100%]
-
-============================= 21 passed in 45.74s =============================
-```
 
 ---
 
@@ -188,8 +192,8 @@ RAG/
 │   ├── enterprise_cloud_security_policy.md
 │   ├── distributed_systems_syllabus.md
 │   └── quantum_computing_research.txt
-├── tests/                        # Comprehensive test suite (21/21 passed)
-│   ├── test_full_system_verification.py  # 10-phase Lunorsoft requirements verification
+├── tests/                        # Comprehensive test suite
+│   ├── test_full_system_verification.py  # End-to-end production verification suite
 │   ├── test_rag_pipeline.py              # Ingestion, chunking, retrieval & evaluation tests
 │   └── test_end_to_end.py                # Full pipeline integration tests
 ├── Dockerfile                    # Production container image for backend

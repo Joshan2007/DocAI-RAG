@@ -36,7 +36,7 @@ class TestDocAIIngestion:
         import docx
         doc_file = tmp_path / "sample_test.docx"
         doc = docx.Document()
-        doc.add_heading("Lunorsoft Specifications", level=1)
+        doc.add_heading("Platform Engineering Specifications", level=1)
         doc.add_paragraph("This is a Word document testing the DocAI parser.")
         table = doc.add_table(rows=1, cols=2)
         table.rows[0].cells[0].text = "Header 1"

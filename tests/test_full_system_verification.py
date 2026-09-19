@@ -1,6 +1,6 @@
 """
 Comprehensive Pre-Deployment Verification Test Suite for DocAI Knowledge Assistant.
-Verifies all Lunorsoft Round 1 requirements and bonus features:
+Verifies production RAG requirements and architecture components:
 1. Multi-format ingestion: PDF, DOCX, XLSX, CSV, MD, TXT
 2. Semantic chunking & metadata integrity
 3. Hybrid Retrieval: Dense ChromaDB + Sparse BM25 + Reciprocal Rank Fusion (RRF)
@@ -24,8 +24,8 @@ from src.config import SAMPLE_DOCS_DIR
 from src.evaluation.evaluator import RAGEvaluator
 
 
-class TestLunorsoftRequirements:
-    """Automated verification suite validating all Lunorsoft Option 1 criteria."""
+class TestDocAISystemVerification:
+    """Automated verification suite validating all production system criteria."""
 
     @classmethod
     def setup_class(cls):
