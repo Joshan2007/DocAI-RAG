@@ -26,16 +26,17 @@ from src.pipeline import DocAIPipeline
 AVAILABLE_MODELS = [
     "gemini-2.5-flash",
     "gemini-2.0-flash",
+    "gemini-1.5-flash",
     "gemini-2.5-pro",
 ]
 SUPPORTED_EXTENSIONS = ["pdf", "docx", "xlsx", "xls", "csv", "tsv", "md", "txt", "py", "json"]
 
 
-@st.cache_data(show_spinner=False, ttl=300)
-def fetch_user_models(key: str) -> list[str]:
+@st.cache_data(show_spinner=False, ttl=180)
+def check_api_key_and_models(key: str) -> tuple[bool, str, list[str]]:
     """Dynamically discover available models on the provided Gemini API key."""
     from src.generation.llm_client import LLMClient
-    return LLMClient.get_available_models(key)
+    return LLMClient.validate_api_key_and_get_models(key)
 
 
 def get_secret_api_key() -> str:
@@ -55,7 +56,6 @@ def split_thought(text: str) -> tuple[str, str]:
 
     thought = thought_match.group(1).strip()
     answer = (text[:thought_match.start()] + text[thought_match.end():]).strip()
-    answer = re.split(r"\n#{1,3}\s*Sources\s*:?.*", answer, maxsplit=1, flags=re.IGNORECASE | re.DOTALL)[0].strip()
     return thought, answer
 
 
@@ -74,34 +74,26 @@ def render_reasoning(thought: str) -> None:
 
 
 def render_citations(citations: Iterable[Dict[str, Any]]) -> None:
+    """Renders prominent verified source citations with exact page numbers and excerpts."""
     citations = list(citations)
     if not citations:
         return
 
-    with st.expander(f"Sources ({len(citations)})", expanded=False):
+    with st.expander(f"📚 Verified Sources & Citations ({len(citations)})", expanded=True):
         for index, citation in enumerate(citations, start=1):
             source = citation.get("source", "Unknown source")
             page = citation.get("page", 1)
             score = citation.get("score", 0)
             excerpt = re.sub(r"\s+", " ", citation.get("text_snippet", "")).strip()
-            st.markdown(f"**{index}. {source}** · page {page} · score {score}")
-            st.caption(citation.get("retrieval_method", "hybrid retrieval"))
-            st.write(excerpt)
+            method = citation.get("retrieval_method", "hybrid retrieval")
+            st.markdown(f"**[{index}] {source}** · Page {page} · *{method}*")
+            if excerpt:
+                st.caption(f'"{excerpt}"')
 
 
 def render_source_summary(citations: Iterable[Dict[str, Any]]) -> None:
-    """Show compact source attribution without expanding excerpt cards."""
-    grouped_sources = {}
-    for citation in citations:
-        source = citation.get("source", "Unknown source")
-        grouped_sources.setdefault(source, set()).add(citation.get("page", 1))
-
-    if grouped_sources:
-        summary = "; ".join(
-            f"{source} (page(s): {', '.join(str(page) for page in sorted(pages))})"
-            for source, pages in grouped_sources.items()
-        )
-        st.caption(f"Source: {summary}")
+    """Show compact source attribution."""
+    render_citations(citations)
 
 
 def render_metrics(evaluation: Any) -> None:
@@ -139,20 +131,33 @@ with st.sidebar:
 
     models_to_display = AVAILABLE_MODELS
     if api_key:
-        discovered = fetch_user_models(api_key)
-        if discovered:
+        is_valid, msg, discovered = check_api_key_and_models(api_key)
+        if is_valid and discovered:
+            st.success(f"Gemini connected ({len(discovered)} models available)")
             models_to_display = discovered
+        elif not is_valid:
+            err_summary = msg.split("\n")[0].strip()
+            if "'message':" in err_summary:
+                m_match = re.search(r"'message':\s*['\"](.*?)['\"]", err_summary)
+                if m_match:
+                    err_summary = m_match.group(1)
+            st.error(f"❌ API Key Notice: {err_summary}")
+        else:
+            st.warning("⚠️ No models returned by Google for this key.")
+    else:
+        st.info("Local grounded mode (enter API key above for Gemini reasoning)")
 
     model_name = st.selectbox("Generation model", models_to_display, index=0)
+
+    allow_custom = st.checkbox("Custom model name", value=False)
+    if allow_custom:
+        custom_input = st.text_input("Model ID", value=model_name).strip()
+        if custom_input:
+            model_name = custom_input
 
     # Sync API key and model dynamically without recreating pipeline
     pipeline.llm.set_api_key(api_key)
     pipeline.llm.set_model(model_name)
-
-    if api_key:
-        st.success(f"Gemini active ({model_name})")
-    else:
-        st.info("Local grounded mode (enter API key above for Gemini reasoning)")
 
     st.divider()
     st.subheader("Documents")

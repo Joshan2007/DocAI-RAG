@@ -67,13 +67,18 @@ class LLMClient:
             self.client = None
 
     @classmethod
-    def get_available_models(cls, api_key: str) -> List[str]:
-        """Queries Google Gemini API to discover active models available on the API key."""
-        if not api_key:
-            return FALLBACK_MODELS
+    def validate_api_key_and_get_models(cls, api_key: str) -> tuple[bool, str, List[str]]:
+        """
+        Validates the API key against Google Gemini API and returns:
+        (is_valid, status_message, list_of_available_models)
+        """
+        key = (api_key or "").strip()
+        if not key:
+            return False, "No API key provided", FALLBACK_MODELS
+
         try:
             if GENAI_NEW_SDK:
-                client = genai.Client(api_key=api_key)
+                client = genai.Client(api_key=key)
                 models = []
                 for m in client.models.list():
                     name = getattr(m, "name", "")
@@ -83,14 +88,39 @@ class LLMClient:
                         actions = getattr(m, "supported_actions", None)
                         if actions is None or "generateContent" in actions:
                             models.append(name)
+
                 if models:
-                    preferred = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.5-pro"]
-                    ordered = [m for m in preferred if m in models]
+                    preferred_order = [
+                        "gemini-2.5-flash",
+                        "gemini-2.0-flash",
+                        "gemini-1.5-flash",
+                        "gemini-2.5-pro",
+                        "gemini-1.5-pro",
+                        "gemini-2.0-flash-lite",
+                    ]
+                    ordered = [m for m in preferred_order if m in models]
                     ordered.extend([m for m in models if m not in ordered])
-                    return ordered
-        except Exception:
-            pass
-        return FALLBACK_MODELS
+                    return True, "Connected", ordered
+                else:
+                    return False, "No generateContent models found for this account", FALLBACK_MODELS
+            else:
+                genai.configure(api_key=key)
+                models = [
+                    m.name.replace("models/", "")
+                    for m in genai.list_models()
+                    if "generateContent" in getattr(m, "supported_generation_methods", [])
+                ]
+                if models:
+                    return True, "Connected", models
+                return False, "No generateContent models found", FALLBACK_MODELS
+        except Exception as e:
+            return False, str(e), FALLBACK_MODELS
+
+    @classmethod
+    def get_available_models(cls, api_key: str) -> List[str]:
+        """Queries Google Gemini API to discover active models available on the API key."""
+        is_valid, _, models = cls.validate_api_key_and_get_models(api_key)
+        return models if is_valid and models else FALLBACK_MODELS
 
     def _get_candidate_models(self) -> List[str]:
         """Returns ordered list of candidate models for retry on 404 / deprecation."""
@@ -249,11 +279,13 @@ class LLMClient:
                 yield w + " "
                 time.sleep(0.004)
         elif error_msg:
-            clean_err = error_msg.split('\n')[0].strip()
-            if "404" in clean_err or "not found" in clean_err.lower():
-                clean_err = f"Model '{self.model_name}' is not found or has been retired. Please select 'gemini-2.5-flash' or 'gemini-2.0-flash' in the sidebar."
+            clean_err = error_msg.strip().split('\n')[0]
+            if "'message':" in clean_err:
+                msg_match = re.search(r"'message':\s*['\"](.*?)['\"]", clean_err)
+                if msg_match:
+                    clean_err = msg_match.group(1)
             banner = (
-                f"⚠️ **Gemini Notice**: {clean_err}\n\n"
+                f"⚠️ **Gemini Notice**: `{clean_err}`\n\n"
                 "DocAI has engaged the **Local Grounded Synthesizer** using Hybrid Retrieval (ChromaDB + BM25) to answer directly from your uploaded document.\n\n---\n\n"
             )
             for w in banner.split(" "):
