@@ -234,6 +234,12 @@ with st.sidebar:
             st.rerun()
 
 # ── Main Conversation Area ────────────────────────────────────────────────────
+if not api_key:
+    st.info(
+        "💡 **Gemini API Key Needed for AI Answers**: Please enter your **Gemini API key** in the sidebar on the left. "
+        "Without an API key, the system can only perform basic keyword matching instead of reading and understanding your questions."
+    )
+
 st.subheader("Conversation")
 messages = st.session_state.setdefault("messages", [])
 

@@ -259,6 +259,12 @@ class LLMClient:
         clean_q = re.sub(r'[^a-zA-Z0-9\s]', ' ', query_str.lower())
         q_terms = [t for t in clean_q.split() if t not in stopwords and len(t) > 2]
 
+        # Synonym expansion for metadata and common question intents
+        if any(t in q_terms or t in clean_q for t in ["wrote", "author", "creator", "writer", "who"]):
+            q_terms.extend(["author", "written", "by", "instructor", "prof", "professor", "dr", "prepared", "creator"])
+        elif any(t in q_terms or t in clean_q for t in ["title", "about"]):
+            q_terms.extend(["title", "course", "specification", "policy", "overview", "introduction"])
+
         ranked_sentences = []
         doc_page_map = {}
 
@@ -267,16 +273,21 @@ class LLMClient:
             pg = c.metadata.get("page_number", 1) if hasattr(c, "metadata") else 1
             doc_page_map.setdefault(src, set()).add(pg)
 
-            lines = [s.strip() for s in re.split(r'(?<=[.!?])\s+|\n+', c.text) if len(s.strip()) > 20]
+            # Split into natural paragraphs/lines first to avoid breaking titles/honorifics
+            raw_lines = [line.strip() for line in c.text.split('\n') if line.strip()]
+            lines = []
+            for raw in raw_lines:
+                if len(raw) <= 300:
+                    lines.append(raw)
+                else:
+                    sub_sentences = [s.strip() for s in re.split(r'\.\s+', raw) if len(s.strip()) > 15]
+                    lines.extend(sub_sentences)
+
             for line in lines:
                 line_lower = line.lower()
-                score = 0
-                for term in q_terms:
-                    if term in line_lower:
-                        score += 4
-                # Position prior: earlier retrieved chunks scored higher by RRF
-                score += max(0, 3 - chunk_idx)
-                if score > 0 or len(q_terms) == 0:
+                term_matches = sum(1 for term in q_terms if term in line_lower)
+                if term_matches > 0:
+                    score = (term_matches * 5) + max(0, 3 - chunk_idx)
                     ranked_sentences.append((score, line, src, pg))
 
         # Sort by relevance score descending
@@ -305,11 +316,10 @@ class LLMClient:
                     response_blocks.append(f"- {clean_text} *(from {src}, p. {pg})*\n")
                 response_blocks.append("\n")
         else:
-            response_blocks.append("### Relevant Excerpts\n")
-            for c in chunks[:3]:
-                src = c.metadata.get("source_file", "Document")
-                pg = c.metadata.get("page_number", 1)
-                response_blocks.append(f"**From {src} (Page {pg}):**\n> {c.text.strip()}\n\n")
+            response_blocks.append(
+                f"The active document excerpts do not contain explicit information answering **'{query_str}'**.\n\n"
+                "Please verify your question or ensure your Gemini API key is configured for complete generative synthesis.\n\n"
+            )
 
         # Sources Section
         response_blocks.append("### Sources\n")

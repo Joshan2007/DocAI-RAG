@@ -24,7 +24,7 @@ class DocAIPipeline:
     def __init__(self, api_key: Optional[str] = None, persist_directory: Optional[str] = None):
         self.parser = DocumentParser()
         self.chunker = DocumentChunker()
-        vector_store = VectorStore(persist_directory=persist_directory) if persist_directory else None
+        vector_store = VectorStore(persist_directory=persist_directory)
         self.retriever = HybridRetriever(vector_store=vector_store)
         self.llm = LLMClient(api_key=api_key)
         self.memory = ConversationMemory()

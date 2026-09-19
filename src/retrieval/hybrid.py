@@ -104,6 +104,33 @@ class HybridRetriever:
                     "in_sparse": True,
                 }
 
+        # 3. Document metadata & authorship booster
+        q_lower = query.lower()
+        is_metadata_query = any(k in q_lower for k in [
+            "who wrote", "author", "creator", "written by", "who made",
+            "instructor", "prof", "who is", "what is this", "title", "about"
+        ])
+        if is_metadata_query:
+            # Add opening header chunks (chunk_index 0) of documents if not present
+            for c in self.bm25_retriever.chunks:
+                if c.chunk_index == 0:
+                    boost = 1.0 / (rrf_constant + 1)
+                    if c.chunk_id in candidates:
+                        candidates[c.chunk_id]["rrf_score"] += boost
+                    else:
+                        candidates[c.chunk_id] = {
+                            "chunk_id": c.chunk_id,
+                            "text": c.text,
+                            "metadata": c.to_metadata_dict(),
+                            "rrf_score": boost,
+                            "dense_score": None,
+                            "dense_rank": None,
+                            "bm25_score": 1.0,
+                            "bm25_rank": 1,
+                            "in_dense": False,
+                            "in_sparse": True,
+                        }
+
         # 3. Classify retrieval source & construct RetrievedChunk objects
         fused_chunks: List[RetrievedChunk] = []
         for cid, data in candidates.items():

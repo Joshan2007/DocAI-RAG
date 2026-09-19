@@ -15,16 +15,18 @@ from src.ingestion.chunker import DocumentChunk
 class VectorStore:
     """Manages the local ChromaDB vector store collection for dense semantic search with auto-healing resilience."""
 
-    def __init__(self, persist_directory: Optional[str] = CHROMA_PERSIST_DIR, collection_name: str = "docai_knowledge_base"):
+    def __init__(self, persist_directory: Optional[str] = CHROMA_PERSIST_DIR, collection_name: Optional[str] = None):
         self.persist_directory = persist_directory
-        self.collection_name = collection_name
 
         # Initialize client: in-memory if persist_directory is None or ':memory:', otherwise persistent
         if self.persist_directory and self.persist_directory != ":memory:":
             Path(self.persist_directory).mkdir(parents=True, exist_ok=True)
             self.client = chromadb.PersistentClient(path=self.persist_directory)
+            self.collection_name = collection_name or "docai_knowledge_base"
         else:
+            import uuid
             self.client = chromadb.EphemeralClient()
+            self.collection_name = collection_name or f"docai_kb_{uuid.uuid4().hex}"
 
         # Use ChromaDB's high-speed ONNX all-MiniLM-L6-v2 embedding function
         self.embedding_fn = embedding_functions.DefaultEmbeddingFunction()
