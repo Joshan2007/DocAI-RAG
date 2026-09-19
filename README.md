@@ -7,7 +7,7 @@
 [![Gemini](https://img.shields.io/badge/LLM-Google%20Gemini%20Flash%20%26%20Pro-4285F4.svg?style=for-the-badge&logo=google)](https://aistudio.google.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 
-**DocAI** is an advanced, production-grade AI Knowledge Assistant engineered to ingest, index, and query complex multi-domain documents (enterprise policies, scientific research papers, financial spreadsheets, technical specifications, and student coursework) with zero hallucination, verifiable citations, dynamic Claude-style thinking, and real-time retrieval evaluation.
+**DocAI** is an advanced, production-grade AI Knowledge Assistant engineered to ingest, index, and query complex multi-domain documents (enterprise policies, scientific research papers, financial spreadsheets, technical specifications, and student coursework) with zero hallucination, verifiable citations, dynamic real-time reasoning, and real-time retrieval evaluation.
 
 ---
 
@@ -49,7 +49,7 @@ flowchart TD
         STREAM --> EVAL["RAG Triad Automated Evaluator\n- Retrieval Relevance (0.0 - 1.0)\n- Groundedness / Faithfulness (0.0 - 1.0)\n- Citation Coverage & Latency (ms)"]
     end
 
-    subgraph PRESENTATION["5. Claude-Inspired Web Application (Next.js 14)"]
+    subgraph PRESENTATION["5. Modern Web Application (Next.js 14)"]
         STREAM --> UI["Warm Ivory UI (#FAF9F5)\n- Real-time Thinking Accordion\n- Smooth Typewriter Animations\n- Dedicated Post-Answer Citations\n- In-Box Model Switcher\n- Removable Document Capsules (✕)"]
         EVAL --> UI
     end
@@ -97,10 +97,10 @@ Score normalization across different retrieval modalities (e.g. cosine similarit
 
 ---
 
-### 4. Dynamic Claude-Style Thinking & Dual-Stream Generation
+### 4. Dynamic Step-by-Step Thinking & Dual-Stream Generation
 - **Dynamic Reasoning Extraction**: Modern models produce higher quality, better grounded answers when allowed to reason through evidence before speaking. DocAI instructs Gemini via system prompts to formulate an explicit thought trace inside `<thought>...</thought>` tags.
 - **Dual-Stream Server-Sent Events (SSE)**: Rather than buffering or dumping raw thought tags on screen, the FastAPI backend ([`backend/server.py`](backend/server.py)) parses tokens on-the-fly and streams two distinct event channels:
-  1. `event: thinking_token`: Populates the collapsible Claude-style contemplation drawer with subtle shimmer animation in real-time.
+  1. `event: thinking_token`: Populates the collapsible contemplation drawer with subtle shimmer animation in real-time.
   2. `event: token`: Paces answer tokens chunk-by-chunk using a natural typewriter animation directly into the message body.
 - **Pure Google Gemini Architecture**: Configured for high-throughput, low-latency reasoning across four specialized models:
   - **Gemini 1.5 Flash** (Default • Recommended general assistant)
@@ -144,7 +144,7 @@ Unlike primitive RAG demos where the entire database must be wiped to update doc
 | **Domain Terminology** | Often misses exact acronyms, codes, and IDs | **BM25 captures exact lexical tokens (`AES-256`, `CS-482`, `P95`)** |
 | **Chunking Logic** | Blind character slicing (cuts words/sentences) | **Context-Aware Semantic Chunking with sliding overlap** |
 | **Source Attribution** | Clumsy inline tags or completely missing | **Dedicated Post-Answer Citations with page, score & excerpts** |
-| **Thinking Mode** | Static canned text | **Dynamic Claude-Style `<thought>` reasoning streamed in real-time** |
+| **Thinking Mode** | Static canned text | **Dynamic step-by-step `<thought>` reasoning streamed in real-time** |
 | **Document Management** | All-or-nothing wipe | **Granular individual document removal (✕) with live re-indexing** |
 | **Hallucination Control**| Prone to creative extrapolation | **Strict Grounding Policy & Out-of-Domain Refusal** |
 | **Conversational Memory**| Single turn or naive concatenation | **Follow-up Query Contextualizer & Reformulation** |
@@ -157,7 +157,7 @@ Unlike primitive RAG demos where the entire database must be wiped to update doc
 
 ```
 RAG/
-├── frontend/                     # Claude-Style Next.js 14 Web Application
+├── frontend/                     # Modern Next.js 14 Web Application
 │   ├── app/
 │   │   ├── page.tsx              # Main chat interface, model switcher & document chips
 │   │   ├── layout.tsx            # Root layout, fonts & metadata

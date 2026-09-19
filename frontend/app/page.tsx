@@ -311,7 +311,7 @@ export default function Home() {
                 return msg;
               })
             );
-            // Smoothly collapse thinking drawer like Claude once thoughts finish
+            // Smoothly collapse thinking drawer once thoughts finish
             setOpenThinkingIds((prev) => ({ ...prev, [assistantMsgId]: false }));
           } else if (eventType === "token") {
             setMessages((prev) =>
@@ -375,7 +375,7 @@ export default function Home() {
 
   return (
     <div className="flex flex-col min-h-screen bg-[#FAF9F5] text-[#1F1E1D]">
-      {/* Minimal Claude Top Navbar */}
+      {/* Minimal Top Navbar */}
       <header className="sticky top-0 z-30 flex items-center justify-between px-6 py-3.5 bg-[#FAF9F5]/90 backdrop-blur border-b border-[#ECEAE4]">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-lg bg-[#CC785C] flex items-center justify-center text-white font-serif font-bold text-lg shadow-sm">
@@ -413,7 +413,7 @@ export default function Home() {
       {/* Main Chat Area */}
       <main className="flex-1 max-w-4xl w-full mx-auto px-4 sm:px-6 py-8 flex flex-col justify-between">
         {messages.length === 0 ? (
-          /* Empty State - Claude Aesthetic */
+          /* Empty State - Minimal Aesthetic */
           <div className="flex-1 flex flex-col items-center justify-center text-center my-auto py-12 animate-fade-in-up">
             <div className="w-14 h-14 rounded-2xl bg-[#F0E6DE] text-[#CC785C] flex items-center justify-center mb-6 shadow-sm">
               <Sparkles className="w-7 h-7" />
@@ -476,7 +476,7 @@ export default function Home() {
                       D
                     </div>
                     <div className="flex-1 space-y-3 overflow-hidden">
-                      {/* Claude Dynamic Thinking Accordion */}
+                      {/* Dynamic Thinking Accordion */}
                       {(msg.thinkingContent || !msg.isThinkingDone) && (
                         <div className="rounded-xl border border-[#E5E3DC] bg-[#F7F5EE] overflow-hidden transition-all">
                           <button
@@ -696,7 +696,7 @@ export default function Home() {
                   <span>{isUploading ? "Uploading..." : "Attach"}</span>
                 </button>
 
-                {/* Claude-style Model Selector Dropdown */}
+                {/* Model Selector Dropdown */}
                 <div className="relative">
                   <button
                     type="button"

@@ -1,7 +1,7 @@
 """
 FastAPI Server for DocAI Knowledge Assistant.
 Provides endpoints for document upload, management, individual deletion,
-and SSE streaming chat with Claude-authentic dynamic thinking traces.
+and SSE streaming chat with real-time dynamic thinking traces.
 """
 
 import sys
@@ -166,7 +166,7 @@ async def upload_documents(files: List[UploadFile] = File(...)):
 @app.post("/api/chat")
 async def chat_endpoint(req: ChatRequest):
     """
-    Streams SSE events for Claude-style dynamic thinking, real-time reasoning,
+    Streams SSE events for real-time dynamic thinking, reasoning traces,
     answer tokens, and verified citations.
     """
     user_query = req.message.strip()

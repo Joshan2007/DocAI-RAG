@@ -8,7 +8,7 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        claude: {
+        brand: {
           bg: "#FAF9F5",
           panel: "#F3F2ED",
           card: "#FFFFFF",

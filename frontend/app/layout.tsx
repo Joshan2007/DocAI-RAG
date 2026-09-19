@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "DocAI — Claude-Style Knowledge Assistant",
-  description: "Advanced RAG knowledge assistant with Claude aesthetic, document attachments, and thinking trace.",
+  title: "DocAI — AI Knowledge Assistant",
+  description: "Advanced production-grade RAG knowledge assistant with multi-format document support, hybrid retrieval, and real-time thinking traces.",
 };
 
 export default function RootLayout({

@@ -1,6 +1,6 @@
 """
 Launcher script to run both DocAI FastAPI Backend (port 8000)
-and Claude-style Next.js Frontend (port 3000) locally.
+and Next.js Frontend (port 3000) locally.
 """
 
 import sys
@@ -17,7 +17,7 @@ if not VENV_PYTHON.exists():
     VENV_PYTHON = Path(sys.executable)
 
 print("=" * 65)
-print("🧠 DocAI — Claude-Style Knowledge Assistant Launcher")
+print("🧠 DocAI — Production AI Knowledge Assistant Launcher")
 print("=" * 65)
 
 # 1. Start FastAPI Backend
@@ -38,7 +38,7 @@ backend_proc = subprocess.Popen(
 )
 
 # 2. Start Next.js Frontend
-print("[2/2] Starting Claude-Style Next.js UI on http://localhost:3000...")
+print("[2/2] Starting Next.js UI on http://localhost:3000...")
 next_built = (FRONTEND_DIR / ".next").exists()
 frontend_script = "start" if next_built else "dev"
 frontend_cmd = ["npm.cmd" if os.name == "nt" else "npm", "run", frontend_script]
