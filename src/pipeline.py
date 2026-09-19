@@ -149,7 +149,11 @@ class DocAIPipeline:
         t_gen_start = time.time()
         accumulated_text = ""
 
-        for token in self.llm.stream_generate(prompt):
+        for token in self.llm.stream_generate(
+            prompt,
+            user_query=user_query,
+            retrieved_chunks=retrieved_chunks,
+        ):
             accumulated_text += token
             yield {"type": "token", "token": token}
 
