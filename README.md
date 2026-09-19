@@ -43,17 +43,17 @@ flowchart TD
     end
 
     subgraph GENERATION_EVAL["4. LLM Synthesis & Telemetry Engine"]
-        TOP_CHUNKS --> PROMPT_ENG["Strict Grounded Prompt Engineer\n(Forces <thought> reasoning + [Doc: Page] citations)"]
+        TOP_CHUNKS --> PROMPT_ENG["Strict Grounded Prompt Engineer\n(Forces <thought> reasoning + verified citations)"]
         USER_Q --> PROMPT_ENG
-        PROMPT_ENG --> GEMINI{"Google Gemini Engine\n(2.0 Flash / 1.5 Flash / 1.5 Pro)"}
-        GEMINI -- "Rate Limit 429" --> ROTATE["Automatic Model Rollover / Local Synthesizer"]
+        PROMPT_ENG --> GEMINI{"Google Gemini Engine\n(2.5 Flash / 2.0 Flash / 2.5 Pro / 1.5)"}
+        GEMINI -- "Rate Limit 429 / 404" --> ROTATE["Automatic Model Rollover / Local Grounded Synthesizer"]
         GEMINI -- "Success" --> STREAM["Streamed Generation\n(retrieval_complete -> token -> generation_complete)"]
         ROTATE --> STREAM
-        STREAM --> EVAL["RAG Triad Automated Evaluator\n- Retrieval Relevance (0.0 - 1.0)\n- Groundedness / Faithfulness (0.0 - 1.0)\n- Citation Coverage & Latency (ms)"]
+        STREAM --> EVAL["RAG Triad Automated Evaluator\n- Retrieval Relevance (0.0 - 1.0)\n- Groundedness / Faithfulness (0.0 - 1.0)\n- Citations Count & Latency (ms)"]
     end
 
     subgraph PRESENTATION["5. Streamlit Application"]
-      STREAM --> UI["Streamlit UI\n- Document uploader\n- Chat interface\n- Model selector\n- Source citations\n- RAG quality metrics"]
+      STREAM --> UI["Streamlit UI\n- In-memory isolated session lifecycle\n- Live API key validation & dynamic model discovery\n- Verified Sources & Citations with page & excerpt\n- Real-time RAG quality telemetry metrics"]
         EVAL --> UI
     end
 ```
@@ -62,7 +62,7 @@ DocAI was engineered to overcome the core vulnerabilities of traditional Retriev
 
 ### 1. Multi-Format Ingestion & Semantic Chunking Strategy
 - **Universal Document Parsing**: A unified abstraction layer ([`src/ingestion/parser.py`](src/ingestion/parser.py)) parses heterogeneous file formats into structured text objects while preserving document geometry:
-  - **PDF**: Page-by-page text extraction with footer/header stripping via `pypdf`.
+  - **PDF**: Page-by-page text extraction with layout awareness and footer/header stripping via `pypdf`.
   - **Microsoft Word (`.docx`)**: Structural extraction preserving heading hierarchies and nested table cells via `python-docx`.
   - **Excel Spreadsheets (`.xlsx`, `.xls`)**: Tabular serialization preserving workbook sheet names, row indices, and cell formatting via `openpyxl`.
   - **Delimited Files (`.csv`, `.tsv`)**: Normalizes rows into readable, column-annotated natural language records.
@@ -78,7 +78,7 @@ Single-mode retrieval architectures suffer from fundamental trade-offs:
 
 DocAI implements a **parallel dual-index architecture**:
 
-1. **Dense Vector Store** ([`src/retrieval/vector_store.py`](src/retrieval/vector_store.py)): Fast, local ONNX embeddings indexed into persistent ChromaDB collections with cosine distance metric.
+1. **Dense Vector Store** ([`src/retrieval/vector_store.py`](src/retrieval/vector_store.py)): Fast, local embeddings indexed into ephemeral/in-memory ChromaDB collections with cosine distance metric.
 2. **Sparse Lexical Index** ([`src/retrieval/bm25_retriever.py`](src/retrieval/bm25_retriever.py)): An in-memory BM25Okapi inverted index tokenized on alphanumeric boundaries.
 
 ---
@@ -97,36 +97,43 @@ Score normalization across different retrieval modalities (e.g. cosine similarit
 
 ---
 
-### 4. Dynamic Step-by-Step Thinking & Streamed Generation
+### 4. Dynamic Thinking, Model Discovery & Streamed Generation
 - **Dynamic Reasoning Extraction**: Modern models produce higher quality, better grounded answers when allowed to reason through evidence before speaking. DocAI instructs Gemini via system prompts to formulate an explicit thought trace inside `<thought>...</thought>` tags.
+- **Dynamic API Key & Model Discovery**: When a user inputs their Gemini API key, DocAI queries Google's API (`client.models.list()`) in real time, validating key permissions and populating the dropdown with the exact generation models authorized on that key. A custom model input option is also provided.
 - **Streaming Generation**: The pipeline exposes retrieval metadata, answer tokens, and final evaluation directly to Streamlit while keeping document retrieval and answer generation in one process.
-- **Pure Google Gemini Architecture**: Configured for high-throughput, low-latency reasoning across current Gemini models:
-  - **Gemini 2.0 Flash** (Default • High-speed multimodal reasoning)
-  - **Gemini 1.5 Flash** (Standard • Fast, lightweight general assistant)
-  - **Gemini 1.5 Pro** (Deep reasoning for complex multi-document synthesis)
+- **Multi-Model Fallback Chain**: Configured for high-throughput, low-latency reasoning across modern Gemini models with automatic rollover:
+  - **Gemini 2.5 Flash** (Default • Google's high-efficiency, reasoning-optimized model)
+  - **Gemini 2.0 Flash** (Fast multimodal reasoning)
+  - **Gemini 2.5 Pro** (Deep reasoning for complex multi-document synthesis)
+  - **Gemini 1.5 Series** (Backward-compatible fallback)
 
 ---
 
-### 5. Anti-Hallucination Guardrails & Zero-Crash Resilience
+### 5. Anti-Hallucination Guardrails & Prominent Citations
 - **Strict Factual Containment**: The generation prompt ([`src/generation/prompts.py`](src/generation/prompts.py)) establishes strict guardrails: answers must be derived *exclusively* from retrieved passages. When facts are absent or ambiguous, the model is explicitly constrained to state that insufficient information is available.
-- **Dedicated Non-Intrusive Citations**: In-text superscript interruptions fragment reading comprehension. DocAI formats citations cleanly *after* the synthesized answer, providing structured citation cards with source filenames, page numbers, relevance confidence scores, and verbatim excerpt quotes.
-- **Graceful Quota Degradation**: If Google AI Studio returns `429 RESOURCE_EXHAUSTED`, DocAI automatically cascades across fallback models. If completely offline or unauthenticated, the **Local Grounded Synthesizer** takes over, extracting and presenting document-grounded facts without crashing.
+- **Prominent Verified Sources & Citations**: Beneath every response, an automatically expanded **"📚 Verified Sources & Citations"** panel lists every retrieved evidence passage grounding the answer, showing:
+  - Source document name (e.g. `[1] engineering_specification.pdf`)
+  - Document page number (e.g. `Page 4`)
+  - Retrieval method (`hybrid retrieval`, `dense_only`, or `sparse_only`)
+  - Exact verbatim quoted text snippet from the document.
+- **Graceful Error & Quota Degradation**: If Google returns `429 RESOURCE_EXHAUSTED` or `404`, DocAI automatically cascades across candidate fallback models (`gemini-2.5-flash`, `gemini-2.0-flash`, `gemini-1.5-flash`, `gemini-2.5-pro`, `gemini-1.5-pro`). If unauthenticated or completely offline, the **Local Grounded Synthesizer** takes over, extracting and presenting document-grounded facts without crashing.
 
 ---
 
 ### 6. Automated RAG Triad Telemetry & Quality Assessment
 Every synthesized answer is evaluated in real-time by [`src/evaluation/evaluator.py`](src/evaluation/evaluator.py) against the **RAG Triad**:
 1. **Retrieval Relevance**: Measures token-level intent overlap between the user's query and the top retrieved passages.
-2. **Groundedness / Faithfulness**: Computes the ratio of synthesized claims that are verified by retrieved passage content (preventing hallucinations).
-3. **Citation Coverage**: Verifies that assertions link directly back to indexed documents.
+2. **Groundedness / Faithfulness**: Computes the ratio of synthesized claims verified by retrieved passage content (preventing hallucinations).
+3. **Synchronized Citation Count**: Reports the exact count of verified citation passages grounding the answer, matching the Verified Sources panel.
 4. **Latency Profiling**: Reports separate latency metrics for retrieval phase ($t_{retrieval}$) versus LLM token synthesis ($t_{generation}$) in milliseconds.
 
 ---
 
-### 7. Granular Document Lifecycle & Self-Healing Index
+### 7. Granular Document Lifecycle & Zero-Disk-Leak Session Architecture
 Unlike primitive RAG demos where the entire database must be wiped to update documents, DocAI features an interactive document manager:
-- Each uploaded file is indexed directly from Streamlit's file uploader.
-- The sidebar can clear the indexed knowledge base and conversation memory without restarting the app.
+- Each uploaded file is indexed dynamically into ephemeral vector storage tied to the user's Streamlit session state.
+- Completely isolated per user session with zero disk leaks when deployed to Streamlit Cloud.
+- The sidebar allows clearing the indexed knowledge base and conversation memory without restarting the app.
 
 ---
 
@@ -137,12 +144,12 @@ Unlike primitive RAG demos where the entire database must be wiped to update doc
 | **Retrieval Mode** | Dense Vector Only (Cosine distance) | **Hybrid Search (Dense ChromaDB + Sparse BM25 via RRF, $k=60$)** |
 | **Domain Terminology** | Often misses exact acronyms, codes, and IDs | **BM25 captures exact lexical tokens (`AES-256`, `CS-482`, `P95`)** |
 | **Chunking Logic** | Blind character slicing (cuts words/sentences) | **Context-Aware Semantic Chunking with sliding overlap** |
-| **Source Attribution** | Clumsy inline tags or completely missing | **Dedicated Post-Answer Citations with page, score & excerpts** |
+| **Source Attribution** | Clumsy inline tags or completely missing | **Prominent Verified Sources & Citations with page, score & excerpts** |
 | **Thinking Mode** | Static canned text | **Dynamic step-by-step `<thought>` reasoning streamed in real-time** |
-| **Document Management** | All-or-nothing wipe | **Multiple document upload with clear-and-reset control** |
+| **Document Management** | All-or-nothing wipe | **Session-isolated multi-doc uploader with clear-and-reset control** |
 | **Hallucination Control**| Prone to creative extrapolation | **Strict Grounding Policy & Out-of-Domain Refusal** |
 | **Conversational Memory**| Single turn or naive concatenation | **Follow-up Query Contextualizer & Reformulation** |
-| **Quality Evaluation** | None (Anecdotal inspection) | **Automated RAG Triad Telemetry (Groundedness, Relevance, Latency)** |
+| **Quality Evaluation** | None (Anecdotal inspection) | **Automated RAG Triad Telemetry (Groundedness, Relevance, Citations)** |
 | **Quota Resilience** | Crashes on 429 or quota limit | **Automatic Gemini model rollover + Local Grounded Synthesizer** |
 
 ---
@@ -151,7 +158,7 @@ Unlike primitive RAG demos where the entire database must be wiped to update doc
 
 ```
 RAG/
-├── app.py                        # Self-contained Streamlit application
+├── app.py                        # Self-contained Streamlit application with session isolation
 ├── src/                          # Modular Production RAG Engine
 │   ├── config.py                 # Hyperparameters, paths & Gemini model list
 │   ├── pipeline.py               # Orchestrator connecting all RAG components
@@ -159,15 +166,15 @@ RAG/
 │   │   ├── parser.py             # Universal document parser (PDF, DOCX, XLSX, CSV, MD, TXT)
 │   │   └── chunker.py            # Semantic chunker with sliding overlap & metadata
 │   ├── retrieval/
-│   │   ├── vector_store.py       # ChromaDB persistent dense vector store
+│   │   ├── vector_store.py       # ChromaDB persistent & in-memory vector store
 │   │   ├── bm25_retriever.py     # BM25Okapi lexical index with dynamic reindexing
 │   │   └── hybrid.py             # Reciprocal Rank Fusion (RRF, k=60) engine
 │   ├── generation/
 │   │   ├── prompts.py            # Strict grounding, anti-hallucination & thought tags
-│   │   ├── llm_client.py         # Gemini Flash & Pro client with automatic rollover
+│   │   ├── llm_client.py         # Gemini Flash & Pro client with dynamic discovery & fallback
 │   │   └── memory.py             # Multi-turn conversational memory & query reformulator
 │   └── evaluation/
-│       └── evaluator.py          # RAG Triad automated metrics (Relevance, Groundedness, Latency)
+│       └── evaluator.py          # RAG Triad automated metrics (Relevance, Groundedness, Citations)
 ├── sample_docs/                  # Multi-domain sample knowledge portfolio
 │   ├── engineering_specification.pdf
 │   ├── platform_engineering_guidelines.docx
@@ -176,9 +183,10 @@ RAG/
 │   ├── enterprise_cloud_security_policy.md
 │   ├── distributed_systems_syllabus.md
 │   └── quantum_computing_research.txt
-├── tests/                        # Pipeline and integration test suite
+├── tests/                        # Full automated test suite (19 tests)
 │   ├── test_rag_pipeline.py              # Ingestion, chunking, retrieval & evaluation tests
-│   └── test_end_to_end.py                # Full pipeline integration tests
+│   ├── test_end_to_end.py                # Full pipeline integration tests
+│   └── test_full_system_verification.py  # 8-step verification test suite
 ├── requirements.txt              # Clean Python dependencies
 └── run_app.py                    # One-click Streamlit launcher
 ```
