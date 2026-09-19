@@ -1,0 +1,6 @@
+Benchmark,Category,Metric,Value,Target,Status
+Latency Test,Retrieval,P95 Hybrid Latency,18ms,<50ms,Passed
+Throughput,Ingestion,Pages Per Second,42 pages/sec,>20 pages/sec,Passed
+Vector Accuracy,Search,Top-5 Precision,96.4%,>90%,Passed
+Lexical Precision,BM25,Exact Keyword Hit Rate,98.1%,>92%,Passed
+Memory Footprint,Index,RAM Usage per 1k chunks,12MB,<50MB,Passed
