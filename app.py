@@ -88,6 +88,21 @@ def render_citations(citations: Iterable[Dict[str, Any]]) -> None:
             st.write(excerpt)
 
 
+def render_source_summary(citations: Iterable[Dict[str, Any]]) -> None:
+    """Show compact source attribution without expanding excerpt cards."""
+    grouped_sources = {}
+    for citation in citations:
+        source = citation.get("source", "Unknown source")
+        grouped_sources.setdefault(source, set()).add(citation.get("page", 1))
+
+    if grouped_sources:
+        summary = "; ".join(
+            f"{source} (page(s): {', '.join(str(page) for page in sorted(pages))})"
+            for source, pages in grouped_sources.items()
+        )
+        st.caption(f"Source: {summary}")
+
+
 def render_metrics(evaluation: Any) -> None:
     if not evaluation:
         return
@@ -165,6 +180,8 @@ for message in messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
         render_reasoning(message.get("thinking", ""))
+        if message.get("citations"):
+            render_source_summary(message["citations"])
         if show_sources and message.get("citations"):
             render_citations(message["citations"])
         if message.get("evaluation"):
@@ -199,6 +216,7 @@ if question:
         if answer:
             thought, answer = render_answer(answer, answer_placeholder)
             render_reasoning(thought)
+            render_source_summary(citations)
             if show_sources and citations:
                 render_citations(citations)
             render_metrics(evaluation)

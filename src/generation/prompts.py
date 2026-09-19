@@ -52,8 +52,21 @@ class RAGPromptManager:
     def build_rag_prompt(cls, query: str, retrieved_chunks: List[RetrievedChunk]) -> str:
         """Constructs the complete prompt sent to the LLM."""
         context_block = cls.format_context_block(retrieved_chunks)
+        source_pages = {}
+        for chunk in retrieved_chunks:
+            source = chunk.metadata.get("source_file", "Unknown Document")
+            page = chunk.metadata.get("page_number", 1)
+            source_pages.setdefault(source, set()).add(page)
+
+        source_summary = "; ".join(
+            f"{source} (page(s): {', '.join(str(page) for page in sorted(pages))})"
+            for source, pages in source_pages.items()
+        ) or "no identified source"
 
         user_content = (
+            f"SOURCE SCOPE: The retrieved excerpts come from exactly {len(source_pages)} document(s): {source_summary}. "
+            "Do not claim that the material covers multiple documents or unrelated topics unless that is explicitly supported by these excerpts. "
+            "Do not invent additional documents, topics, or facts.\n\n"
             f"CONTEXT EXCERPTS:\n{context_block}\n\n"
             f"USER QUESTION: {query}\n\n"
             f"ANSWER (Ground your answer strictly in the excerpts above. Do not add a Sources section or inline citation markers):"
