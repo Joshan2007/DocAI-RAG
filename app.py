@@ -137,20 +137,6 @@ with st.sidebar:
     pipeline.llm.set_api_key(api_key)
     pipeline.llm.set_model(model_name)
 
-    show_sources = st.checkbox(
-        "Show source excerpts",
-        value=False,
-        help="Keep this off for a cleaner conversation. Sources remain available when enabled.",
-    )
-
-    doc_mode = st.radio(
-        "Document mode",
-        options=["Single document (replaces previous)", "Multi-document (combine documents)"],
-        index=0,
-        help="Single document mode automatically purges previous documents and chat history when you upload a new document.",
-    )
-    is_multi_doc = "Multi-document" in doc_mode
-
     if api_key:
         st.success(f"Gemini active ({model_name})")
     else:
@@ -170,48 +156,28 @@ with st.sidebar:
     current_names = set(current_uploaded_dict.keys())
     indexed_names = set(pipeline.indexed_files.keys())
 
-    if not is_multi_doc:
-        # Single document mode: only index the latest uploaded file
-        if uploaded_files:
-            latest_file = uploaded_files[-1]
-            if list(pipeline.indexed_files.keys()) != [latest_file.name]:
-                # Completely purge previous documents and reset conversation
-                pipeline.clear_all()
-                st.session_state["messages"] = []
-                try:
-                    result = pipeline.ingest_file(
-                        io.BytesIO(latest_file.getvalue()),
-                        filename=latest_file.name,
-                    )
-                    st.sidebar.success(
-                        f"Loaded **{latest_file.name}** ({result['metadata']['total_chunks']} chunks)"
-                    )
-                except Exception as error:
-                    st.sidebar.error(f"Could not index {latest_file.name}: {error}")
-        else:
-            if pipeline.indexed_files:
-                pipeline.clear_all()
-                st.session_state["messages"] = []
-    else:
-        # Multi-document mode:
-        # 1. Remove files that were removed from the uploader widget
-        for removed in indexed_names - current_names:
-            pipeline.delete_document(removed)
-            st.sidebar.info(f"Removed **{removed}**")
+    # 1. Remove files that were removed from the uploader widget
+    for removed in indexed_names - current_names:
+        pipeline.delete_document(removed)
+        st.sidebar.info(f"Removed **{removed}**")
 
-        # 2. Ingest newly added files
-        for name, f in current_uploaded_dict.items():
-            if name not in pipeline.indexed_files:
-                try:
-                    result = pipeline.ingest_file(
-                        io.BytesIO(f.getvalue()),
-                        filename=name,
-                    )
-                    st.sidebar.success(
-                        f"Indexed **{name}** ({result['metadata']['total_chunks']} chunks)"
-                    )
-                except Exception as error:
-                    st.sidebar.error(f"Could not index {name}: {error}")
+    # 2. Ingest newly added files
+    for name, f in current_uploaded_dict.items():
+        if name not in pipeline.indexed_files:
+            try:
+                result = pipeline.ingest_file(
+                    io.BytesIO(f.getvalue()),
+                    filename=name,
+                )
+                st.sidebar.success(
+                    f"Loaded **{name}** ({result['metadata']['total_chunks']} chunks)"
+                )
+            except Exception as error:
+                st.sidebar.error(f"Could not index {name}: {error}")
+
+    if not current_names and pipeline.indexed_files:
+        pipeline.clear_all()
+        st.session_state["messages"] = []
 
     # Display active documents in knowledge base
     if pipeline.indexed_files:
@@ -249,8 +215,6 @@ for message in messages:
         render_reasoning(message.get("thinking", ""))
         if message.get("citations"):
             render_source_summary(message["citations"])
-        if show_sources and message.get("citations"):
-            render_citations(message["citations"])
         if message.get("evaluation"):
             render_metrics(message["evaluation"])
 
@@ -287,8 +251,6 @@ if question:
                 thought, answer = render_answer(answer, answer_placeholder)
                 render_reasoning(thought)
                 render_source_summary(citations)
-                if show_sources and citations:
-                    render_citations(citations)
                 render_metrics(evaluation)
                 messages.append(
                     {
