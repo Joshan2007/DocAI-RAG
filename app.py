@@ -24,9 +24,9 @@ from src.pipeline import DocAIPipeline
 
 
 AVAILABLE_MODELS = [
-    "gemini-2.0-flash",
     "gemini-1.5-flash",
-    "gemini-1.5-pro",
+    "gemini-2.0-flash",
+    "gemini-2.5-flash",
 ]
 SUPPORTED_EXTENSIONS = ["pdf", "docx", "xlsx", "xls", "csv", "tsv", "md", "txt", "py", "json"]
 

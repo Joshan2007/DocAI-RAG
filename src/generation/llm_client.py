@@ -212,36 +212,32 @@ class LLMClient:
         # 2. Status Callout Banner
         if quota_notice:
             banner = (
-                "> [!WARNING]\n"
-                "> **Google AI Studio API Free-Tier Quota Limit Reached (429 RESOURCE_EXHAUSTED)**\n"
-                ">\n"
-                "> Your Gemini API key has consumed its free-tier quota in Google Cloud. DocAI has automatically activated the **Local Grounded Synthesizer** so you can continue testing, searching, and reviewing your documents without interruption.\n"
-                ">\n"
-                "> 💡 **To restore generative LLM reasoning immediately**:\n"
-                "> 1. Open [Google AI Studio](https://aistudio.google.com/apikey).\n"
-                "> 2. Click **Create API key** and select **Create in NEW project** (each new project gets a fresh 1,500 req/day quota!).\n"
-                "> 3. Paste your new key into the sidebar.\n\n"
+                "⚠️ **Google AI Studio API Free-Tier Quota Limit Reached (429 RESOURCE_EXHAUSTED)**\n\n"
+                "Your Gemini API key has consumed its free-tier quota in Google Cloud. DocAI has automatically activated the **Local Grounded Synthesizer** so you can continue testing, searching, and reviewing your documents without interruption.\n\n"
+                "💡 **To restore generative LLM reasoning immediately**:\n"
+                "1. Open [Google AI Studio](https://aistudio.google.com/apikey).\n"
+                "2. Click **Create API key** and select **Create in NEW project**.\n"
+                "3. Paste your new key into the sidebar.\n\n---\n\n"
             )
             for w in banner.split(" "):
                 yield w + " "
                 time.sleep(0.004)
         elif error_msg:
+            clean_err = error_msg.split('\n')[0]
+            if "404" in clean_err or "not found" in clean_err.lower():
+                clean_err = f"Model '{self.model_name}' is not available on this API key. We recommend selecting 'gemini-1.5-flash' in the sidebar."
             banner = (
-                "> [!WARNING]\n"
-                f"> **Gemini API Notice: {error_msg[:120]}**\n"
-                ">\n"
-                "> DocAI has activated the **Local Grounded Synthesizer** using Hybrid Retrieval (ChromaDB + BM25) to answer directly from your uploaded document.\n\n"
+                f"⚠️ **Gemini Notice**: {clean_err}\n\n"
+                "DocAI has engaged the **Local Grounded Synthesizer** using Hybrid Retrieval (ChromaDB + BM25) to answer directly from your uploaded document.\n\n---\n\n"
             )
             for w in banner.split(" "):
                 yield w + " "
                 time.sleep(0.004)
         elif offline_notice:
             banner = (
-                f"> [!NOTE]\n"
-                f"> **Local Grounded Mode (No Gemini API Key Configured)**\n"
-                f">\n"
-                f"> Operating in Local Grounded Mode for `{self.model_name}`. Excerpts are retrieved via Hybrid Search (Dense ChromaDB + Sparse BM25) and synthesized directly.\n"
-                f"> *(Enter your `GEMINI_API_KEY` in the sidebar to enable live Gemini AI reasoning)*.\n\n"
+                f"ℹ️ **Local Grounded Mode (No Gemini API Key Configured)**\n\n"
+                f"Operating in Local Grounded Mode for `{self.model_name}`. Excerpts are retrieved via Hybrid Search (Dense ChromaDB + Sparse BM25) and synthesized directly.\n"
+                "*(Enter your `GEMINI_API_KEY` in the sidebar to enable live Gemini AI reasoning)*.\n\n---\n\n"
             )
             for w in banner.split(" "):
                 yield w + " "
@@ -270,6 +266,18 @@ class LLMClient:
         }
         clean_q = re.sub(r'[^a-zA-Z0-9\s]', ' ', query_str.lower())
         q_terms = [t for t in clean_q.split() if t not in stopwords and len(t) > 2]
+
+        # Expand query terms with singular and plural variants
+        expanded_terms = set(q_terms)
+        for t in q_terms:
+            if t.endswith("ies") and len(t) > 4:
+                expanded_terms.add(t[:-3] + "y")
+            elif t.endswith("es") and len(t) > 4:
+                expanded_terms.add(t[:-2])
+            elif t.endswith("s") and len(t) > 3:
+                expanded_terms.add(t[:-1])
+            else:
+                expanded_terms.add(t + "s")
 
         doc_page_map = {}
         for c in chunks[:6]:
@@ -326,10 +334,13 @@ class LLMClient:
                 pg = c.metadata.get("page_number", 1) if hasattr(c, "metadata") else 1
                 paragraphs = [p.strip() for p in re.split(r'\n{2,}', c.text) if p.strip()]
                 for para in paragraphs:
-                    sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+|\n+', para) if len(s.strip().split()) >= 5 and len(s.strip()) >= 25]
-                    for s in sentences:
+                    p_clean = " ".join(para.split())
+                    sub_units = [s.strip() for s in re.split(r'(?<=[.!?])\s+', para) if len(s.strip().split()) >= 4 and len(s.strip()) >= 20]
+                    if not sub_units and len(p_clean.split()) >= 4 and len(p_clean) >= 20:
+                        sub_units = [p_clean]
+                    for s in sub_units:
                         s_lower = s.lower()
-                        matches = sum(1 for term in q_terms if re.search(rf"\b{re.escape(term)}\b", s_lower))
+                        matches = sum(1 for term in expanded_terms if re.search(rf"\b{re.escape(term)}\b", s_lower))
                         if matches > 0:
                             score = (matches * 6) + max(0, 3 - chunk_idx)
                             ranked_sentences.append((score, s, src, pg))
