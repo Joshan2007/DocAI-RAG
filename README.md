@@ -205,47 +205,47 @@ RAG/
 
 ---
 
-## 🚀 Local Quickstart Guide
+## 🚀 Local Quickstart (One Command)
 
-### 1. Clone & Set Up Environment
+**Requirements**: Python 3.10+ and Node.js 18+ installed on your machine. That's it.
+
 ```bash
 git clone https://github.com/Joshan2007/DocAI-RAG.git
 cd DocAI-RAG
-
-# Create virtual environment
-python -m venv .venv
-
-# Activate virtual environment
-# On Windows:
-.venv\Scripts\activate
-# On macOS / Linux:
-source .venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-```
-
-### 2. Configure API Key
-Create a `.env` file in the root directory:
-```env
-GEMINI_API_KEY=your_gemini_api_key_here
-DEFAULT_MODEL=gemini-1.5-flash
-```
-*(Get a free API key at [Google AI Studio](https://aistudio.google.com/)). If no key is set, DocAI activates the Local Grounded Synthesizer with zero crashes.*
-
-### 3. Launch the Application
-Run both backend and frontend together:
-```bash
 python run_app.py
 ```
-- **Web Interface**: [http://localhost:3000](http://localhost:3000)
-- **FastAPI Swagger API**: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
-- **Health Check**: [http://127.0.0.1:8000/api/health](http://127.0.0.1:8000/api/health)
 
-### 4. Run Automated Tests
+The launcher does everything automatically on first run:
+
+| Step | What happens |
+|------|-------------|
+| **1** | Creates a Python virtual environment (`.venv`) |
+| **2** | Installs all Python dependencies from `requirements.txt` |
+| **3** | Installs all Node.js dependencies (`npm install` in `frontend/`) |
+| **4** | Prompts you for your **Gemini API key** (one time only — saved to `.env`) |
+| **5** | Starts both servers |
+
+> Get a free Gemini API key at [https://aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey)
+
+On every subsequent run, steps 1–3 are skipped (already installed) and step 4 is skipped (key already in `.env`). Cold start to app in < 5 seconds.
+
+Once running:
+- **Web Interface** → [http://localhost:3000](http://localhost:3000)
+- **API Explorer** → [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+- **Health Check** → [http://127.0.0.1:8000/api/health](http://127.0.0.1:8000/api/health)
+
+Press `Ctrl+C` to stop both servers cleanly.
+
+### Run Automated Tests
 ```bash
+# Activate the venv first, then:
+.venv\Scripts\activate   # Windows
+source .venv/bin/activate  # macOS / Linux
+
 pytest tests/ -v
 ```
+
+
 
 ---
 
