@@ -111,39 +111,29 @@ export default function Home() {
   const [backendUrlInput, setBackendUrlInput] = useState("");
   const [isBackendConnected, setIsBackendConnected] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [isFirstVisit, setIsFirstVisit] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Load API key, backend URL & selected model from localStorage on mount
+  // Load API key & selected model from localStorage on mount
   useEffect(() => {
     const savedGemini = localStorage.getItem("docai_gemini_api_key");
     if (savedGemini) {
       setGeminiApiKey(savedGemini);
       setGeminiKeyInput(savedGemini);
-    }
-    const savedBackend = localStorage.getItem("docai_backend_url");
-    if (
-      savedBackend &&
-      (savedBackend.includes("loca.lt") ||
-        (typeof window !== "undefined" &&
-          window.location.hostname !== "localhost" &&
-          window.location.hostname !== "127.0.0.1" &&
-          savedBackend.includes("127.0.0.1")))
-    ) {
-      localStorage.removeItem("docai_backend_url");
-      setBackendUrl("");
-      setBackendUrlInput("");
-    } else if (savedBackend) {
-      setBackendUrl(savedBackend);
-      setBackendUrlInput(savedBackend);
+    } else {
+      // First-time visitor: auto-open the key entry modal
+      setIsFirstVisit(true);
+      setIsKeyModalOpen(true);
     }
     const savedModel = localStorage.getItem("docai_selected_model");
     if (savedModel && AVAILABLE_MODELS.some((m) => m.id === savedModel)) {
       setSelectedModel(savedModel);
     }
   }, []);
+
 
   // Ping backend health
   useEffect(() => {
@@ -468,28 +458,11 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Right Status: Backend Status & Key Config */}
+        {/* Right: API Key status button */}
         <div className="flex items-center gap-2.5">
           <button
             onClick={() => setIsKeyModalOpen(true)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-medium transition-all ${
-              isBackendConnected
-                ? "bg-[#F3F8F2] border-[#C2E0C6] text-[#2E7D32] hover:bg-[#E8F5E9]"
-                : "bg-[#FFF5F5] border-[#FED7D7] text-[#C53030] hover:bg-[#FEE2E2]"
-            }`}
-            title="Configure Backend Connection & API Keys"
-          >
-            <span
-              className={`w-2 h-2 rounded-full ${
-                isBackendConnected ? "bg-[#2E7D32]" : "bg-[#E53E3E]"
-              }`}
-            ></span>
-            <span>{isBackendConnected ? "Backend Online" : "Connect Backend"}</span>
-          </button>
-
-          <button
-            onClick={() => setIsKeyModalOpen(true)}
-            className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-medium transition-all ${
               geminiApiKey
                 ? "bg-[#F3F8F2] border-[#C2E0C6] text-[#2E7D32] hover:bg-[#E8F5E9]"
                 : "bg-[#FFF9F0] border-[#FCE2BF] text-[#B45309] hover:bg-[#FEF3C7]"
@@ -498,28 +471,28 @@ export default function Home() {
           >
             <span
               className={`w-2 h-2 rounded-full ${
-                geminiApiKey ? "bg-[#2E7D32]" : "bg-[#F59E0B]"
+                geminiApiKey ? "bg-[#2E7D32]" : "bg-[#F59E0B] animate-pulse"
               }`}
-            ></span>
-            <span>{geminiApiKey ? "Gemini Key Active" : "Set Gemini Key"}</span>
+            />
+            <span>{geminiApiKey ? "API Key Active" : "Set API Key"}</span>
           </button>
         </div>
       </header>
 
-      {/* Backend Connection Alert Banner */}
-      {!isBackendConnected && (
-        <div className="bg-[#FFF5F5] border-b border-[#FED7D7] px-6 py-2.5 flex items-center justify-between text-xs text-[#C53030]">
+      {/* Banner: show only when no API key set */}
+      {!geminiApiKey && (
+        <div className="bg-[#FFF9F0] border-b border-[#FCE2BF] px-6 py-2.5 flex items-center justify-between text-xs text-[#B45309]">
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-[#E53E3E] animate-pulse shrink-0"></span>
+            <span className="w-2 h-2 rounded-full bg-[#F59E0B] animate-pulse shrink-0" />
             <span>
-              <strong>Backend Disconnected:</strong> Connect your FastAPI backend to upload documents and query knowledge.
+              <strong>API Key Required:</strong> Enter your free Gemini API key to start chatting with your documents.
             </span>
           </div>
           <button
             onClick={() => setIsKeyModalOpen(true)}
-            className="underline font-semibold hover:text-[#9B2C2C] shrink-0 ml-4"
+            className="underline font-semibold hover:text-[#92400E] shrink-0 ml-4"
           >
-            Connect Backend →
+            Set API Key →
           </button>
         </div>
       )}
@@ -879,94 +852,70 @@ export default function Home() {
         </div>
       </main>
 
-      {/* API Key Modal Dialog */}
+      {/* Settings / API Key Modal */}
       {isKeyModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-fade-in-up">
-          <div className="w-full max-w-md bg-white rounded-2xl border border-[#E5E3DC] shadow-2xl p-6 space-y-4">
+          <div className="w-full max-w-md bg-white rounded-2xl border border-[#E5E3DC] shadow-2xl p-6 space-y-5">
+
+            {/* Header */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-[#F0E6DE] text-[#CC785C] flex items-center justify-center text-sm font-semibold">
-                  ⚙️
+                <div className="w-7 h-7 rounded-lg bg-[#F0E6DE] text-[#CC785C] flex items-center justify-center text-base">
+                  🔑
                 </div>
                 <h3 className="font-serif font-semibold text-lg text-[#1F1E1D]">
-                  Settings & Backend Connection
+                  {isFirstVisit ? "Welcome to DocAI" : "Settings"}
                 </h3>
               </div>
-              <button
-                onClick={() => setIsKeyModalOpen(false)}
-                className="text-[#82807A] hover:text-[#1F1E1D] p-1 rounded-md"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Backend Connection Config */}
-            <div className="space-y-2 p-3 bg-[#FAF8F5] rounded-xl border border-[#ECEAE4]">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-semibold text-[#1F1E1D]">
-                  Backend Server URL
-                </label>
-                <span
-                  className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${
-                    isBackendConnected
-                      ? "bg-[#E8F5E9] text-[#2E7D32]"
-                      : "bg-[#FFEBEE] text-[#C62828]"
-                  }`}
+              {!isFirstVisit && (
+                <button
+                  onClick={() => setIsKeyModalOpen(false)}
+                  className="text-[#82807A] hover:text-[#1F1E1D] p-1 rounded-md"
                 >
-                  {isBackendConnected ? "● Online" : "○ Disconnected"}
-                </span>
-              </div>
-              <input
-                type="text"
-                value={backendUrlInput}
-                onChange={(e) => setBackendUrlInput(e.target.value)}
-                placeholder="https://docai-joshan.loca.lt or https://docai.onrender.com"
-                className="w-full px-3 py-2 rounded-lg border border-[#D5D3CC] focus:border-[#CC785C] focus:ring-1 focus:ring-[#CC785C] outline-none text-xs font-mono bg-white"
-              />
-              <div className="flex items-center justify-between pt-1 text-[11px]">
-                <span className="text-[#82807A]">
-                  Default: Seamless Vercel Cloud Proxy
-                </span>
-                {backendUrl && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setBackendUrl("");
-                      setBackendUrlInput("");
-                      localStorage.removeItem("docai_backend_url");
-                    }}
-                    className="text-[#CC785C] hover:underline font-medium"
-                  >
-                    Reset to Default
-                  </button>
-                )}
-              </div>
+                  <X className="w-4 h-4" />
+                </button>
+              )}
             </div>
 
-            {/* Gemini API Key Config */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-[#1F1E1D] block">
+            {/* Welcome message for first-time visitors */}
+            {isFirstVisit && (
+              <div className="bg-[#FEF9F6] border border-[#F0D9CC] rounded-xl p-3 text-xs text-[#7A4A35] leading-relaxed">
+                To get started, enter your <strong>free Google Gemini API key</strong> below.
+                DocAI uses your own key — your data stays private and never touches our servers.
+              </div>
+            )}
+
+            {/* Gemini API Key — main field */}
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-[#1F1E1D] block">
                 Google Gemini API Key
               </label>
               <input
+                autoFocus
                 type="password"
                 value={geminiKeyInput}
                 onChange={(e) => setGeminiKeyInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && geminiKeyInput.trim()) {
+                    // Trigger save on Enter
+                    e.currentTarget.form?.requestSubmit();
+                  }
+                }}
                 placeholder="AIzaSy..."
                 className="w-full px-3.5 py-2.5 rounded-xl border border-[#D5D3CC] focus:border-[#CC785C] focus:ring-1 focus:ring-[#CC785C] outline-none text-xs font-mono"
               />
-              <div className="flex justify-between items-center pt-1 text-[11px]">
+              <div className="flex justify-between items-center text-[11px]">
                 <a
                   href="https://aistudio.google.com/app/apikey"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-[#CC785C] hover:underline flex items-center gap-1"
                 >
-                  <span>Get free key at Google AI Studio</span>
-                  <ExternalLink className="w-3 h-3" />
+                  <span>Get a free key at Google AI Studio →</span>
                 </a>
                 {geminiApiKey && (
                   <button
+                    type="button"
                     onClick={() => {
                       setGeminiApiKey("");
                       setGeminiKeyInput("");
@@ -980,13 +929,58 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#F0EEE8]">
-              <button
-                onClick={() => setIsKeyModalOpen(false)}
-                className="px-3.5 py-2 rounded-xl text-xs font-medium text-[#52504C] hover:bg-[#F3F1EC] transition-colors"
-              >
-                Cancel
-              </button>
+            {/* Backend status pill */}
+            <div className="flex items-center gap-2 text-xs">
+              <span className={`w-2 h-2 rounded-full shrink-0 ${isBackendConnected ? "bg-[#2E7D32]" : "bg-[#E53E3E] animate-pulse"}`} />
+              <span className={isBackendConnected ? "text-[#2E7D32]" : "text-[#C53030]"}>
+                {isBackendConnected ? "Backend connected" : "Backend connecting…"}
+              </span>
+            </div>
+
+            {/* Advanced: backend URL (hidden by default) */}
+            <details className="group">
+              <summary className="text-[11px] text-[#82807A] cursor-pointer hover:text-[#1F1E1D] select-none list-none flex items-center gap-1">
+                <ChevronDown className="w-3 h-3 transition-transform group-open:rotate-180" />
+                Advanced (Backend URL)
+              </summary>
+              <div className="mt-2 space-y-1.5 pl-1">
+                <p className="text-[11px] text-[#9E9B93]">
+                  Leave blank — the cloud backend is configured automatically.
+                  Only change this if self-hosting.
+                </p>
+                <input
+                  type="text"
+                  value={backendUrlInput}
+                  onChange={(e) => setBackendUrlInput(e.target.value)}
+                  placeholder="https://your-backend.onrender.com"
+                  className="w-full px-3 py-2 rounded-lg border border-[#D5D3CC] focus:border-[#CC785C] focus:ring-1 focus:ring-[#CC785C] outline-none text-xs font-mono bg-white"
+                />
+                {backendUrl && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBackendUrl("");
+                      setBackendUrlInput("");
+                      localStorage.removeItem("docai_backend_url");
+                    }}
+                    className="text-[11px] text-[#CC785C] hover:underline"
+                  >
+                    Reset to default
+                  </button>
+                )}
+              </div>
+            </details>
+
+            {/* Action buttons */}
+            <div className="flex items-center justify-end gap-2 pt-1 border-t border-[#F0EEE8]">
+              {!isFirstVisit && (
+                <button
+                  onClick={() => setIsKeyModalOpen(false)}
+                  className="px-3.5 py-2 rounded-xl text-xs font-medium text-[#52504C] hover:bg-[#F3F1EC] transition-colors"
+                >
+                  Cancel
+                </button>
+              )}
               <button
                 onClick={async () => {
                   const trimmedKey = geminiKeyInput.trim();
@@ -1005,17 +999,16 @@ export default function Home() {
                     localStorage.removeItem("docai_backend_url");
                   }
 
+                  // Push key to backend session
                   try {
                     await fetch(getApiUrl("/api/keys"), {
                       method: "POST",
                       headers: getApiHeaders({ "Content-Type": "application/json" }),
-                      body: JSON.stringify({
-                        gemini_api_key: trimmedKey || null,
-                      }),
+                      body: JSON.stringify({ gemini_api_key: trimmedKey || null }),
                     });
                   } catch (e) {}
 
-                  // Immediately reload documents from updated backend
+                  // Reload documents
                   try {
                     const docRes = await fetch(getApiUrl("/api/documents"), {
                       headers: getApiHeaders(),
@@ -1029,11 +1022,12 @@ export default function Home() {
                     setIsBackendConnected(false);
                   }
 
+                  setIsFirstVisit(false);
                   setIsKeyModalOpen(false);
                 }}
-                className="px-4 py-2 rounded-xl text-xs font-medium bg-[#CC785C] text-white hover:bg-[#B8664B] transition-colors shadow-sm"
+                className="px-5 py-2 rounded-xl text-xs font-medium bg-[#CC785C] text-white hover:bg-[#B8664B] transition-colors shadow-sm"
               >
-                Save & Connect
+                {isFirstVisit ? "Get Started →" : "Save"}
               </button>
             </div>
           </div>
