@@ -15,6 +15,14 @@ import {
 } from "lucide-react";
 import MarkdownRenderer from "../components/MarkdownRenderer";
 
+const DEFAULT_TUNNEL_URL = "https://docai-joshan.loca.lt";
+
+const getApiHeaders = (extra: Record<string, string> = {}) => ({
+  "Bypass-Tunnel-Reminder": "true",
+  "ngrok-skip-browser-warning": "true",
+  ...extra,
+});
+
 const getApiUrl = (path: string) => {
   if (typeof window !== "undefined") {
     const custom = localStorage.getItem("docai_backend_url");
@@ -27,6 +35,10 @@ const getApiUrl = (path: string) => {
     ) {
       return `http://127.0.0.1:8000${path}`;
     }
+    if (process.env.NEXT_PUBLIC_API_URL) {
+      return `${process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, "")}${path}`;
+    }
+    return `${DEFAULT_TUNNEL_URL}${path}`;
   }
   if (process.env.NEXT_PUBLIC_API_URL) {
     return `${process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, "")}${path}`;
@@ -115,6 +127,13 @@ export default function Home() {
     if (savedBackend) {
       setBackendUrl(savedBackend);
       setBackendUrlInput(savedBackend);
+    } else if (
+      typeof window !== "undefined" &&
+      window.location.hostname !== "localhost" &&
+      window.location.hostname !== "127.0.0.1"
+    ) {
+      setBackendUrl(DEFAULT_TUNNEL_URL);
+      setBackendUrlInput(DEFAULT_TUNNEL_URL);
     }
     const savedModel = localStorage.getItem("docai_selected_model");
     if (savedModel && AVAILABLE_MODELS.some((m) => m.id === savedModel)) {
@@ -125,7 +144,9 @@ export default function Home() {
   // Ping backend health
   useEffect(() => {
     const checkHealth = () => {
-      fetch(getApiUrl("/api/health"))
+      fetch(getApiUrl("/api/health"), {
+        headers: getApiHeaders(),
+      })
         .then((res) => {
           if (res.ok) setIsBackendConnected(true);
           else setIsBackendConnected(false);
@@ -144,7 +165,9 @@ export default function Home() {
 
   // Fetch initial documents
   useEffect(() => {
-    fetch(getApiUrl("/api/documents"))
+    fetch(getApiUrl("/api/documents"), {
+      headers: getApiHeaders(),
+    })
       .then((res) => res.json())
       .then((data) => {
         if (data.documents) {
@@ -152,7 +175,7 @@ export default function Home() {
         }
       })
       .catch(() => {});
-  }, []);
+  }, [backendUrl]);
 
   // Reusable upload function for file picker and drag-and-drop
   const uploadFiles = async (files: FileList | File[]) => {
@@ -167,6 +190,7 @@ export default function Home() {
     try {
       const res = await fetch(getApiUrl("/api/upload"), {
         method: "POST",
+        headers: getApiHeaders(),
         body: formData,
       });
       if (!res.ok) {
@@ -240,6 +264,7 @@ export default function Home() {
     try {
       await fetch(getApiUrl(`/api/documents/${encodeURIComponent(filename)}`), {
         method: "DELETE",
+        headers: getApiHeaders(),
       });
       setAttachedFiles((prev) => prev.filter((f) => f.filename !== filename));
     } catch (err) {
@@ -281,7 +306,7 @@ export default function Home() {
     try {
       const response = await fetch(getApiUrl("/api/chat"), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getApiHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           message: userText,
           model: selectedModel,
@@ -464,6 +489,24 @@ export default function Home() {
           </button>
         </div>
       </header>
+
+      {/* Backend Connection Alert Banner */}
+      {!isBackendConnected && (
+        <div className="bg-[#FFF5F5] border-b border-[#FED7D7] px-6 py-2.5 flex items-center justify-between text-xs text-[#C53030]">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-[#E53E3E] animate-pulse shrink-0"></span>
+            <span>
+              <strong>Backend Disconnected:</strong> Connect your FastAPI backend to upload documents and query knowledge.
+            </span>
+          </div>
+          <button
+            onClick={() => setIsKeyModalOpen(true)}
+            className="underline font-semibold hover:text-[#9B2C2C] shrink-0 ml-4"
+          >
+            Connect Backend →
+          </button>
+        </div>
+      )}
 
       {/* Main Chat Area */}
       <main className="flex-1 max-w-4xl w-full mx-auto px-4 sm:px-6 py-8 flex flex-col justify-between">
@@ -826,11 +869,11 @@ export default function Home() {
           <div className="w-full max-w-md bg-white rounded-2xl border border-[#E5E3DC] shadow-2xl p-6 space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-[#CC785C] text-white flex items-center justify-center text-xs font-serif font-bold">
-                  ✦
+                <div className="w-7 h-7 rounded-lg bg-[#F0E6DE] text-[#CC785C] flex items-center justify-center text-sm font-semibold">
+                  ⚙️
                 </div>
                 <h3 className="font-serif font-semibold text-lg text-[#1F1E1D]">
-                  Configure Gemini API Key
+                  Settings & Backend Connection
                 </h3>
               </div>
               <button
@@ -861,11 +904,11 @@ export default function Home() {
                 type="text"
                 value={backendUrlInput}
                 onChange={(e) => setBackendUrlInput(e.target.value)}
-                placeholder="https://docai-backend.onrender.com or leave blank for localhost:8000"
+                placeholder="https://docai-joshan.loca.lt or https://docai.onrender.com"
                 className="w-full px-3 py-2 rounded-lg border border-[#D5D3CC] focus:border-[#CC785C] focus:ring-1 focus:ring-[#CC785C] outline-none text-xs font-mono bg-white"
               />
               <p className="text-[11px] text-[#82807A] leading-relaxed">
-                When deployed on Vercel, connect your FastAPI backend URL (e.g. from Render or local tunnel). Leave empty for <code>localhost:8000</code>.
+                Enter your live FastAPI backend URL (e.g. Render, Railway, or tunnel). Leave blank for local development.
               </p>
             </div>
 
@@ -934,7 +977,7 @@ export default function Home() {
                   try {
                     await fetch(getApiUrl("/api/keys"), {
                       method: "POST",
-                      headers: { "Content-Type": "application/json" },
+                      headers: getApiHeaders({ "Content-Type": "application/json" }),
                       body: JSON.stringify({
                         gemini_api_key: trimmedKey || null,
                       }),
@@ -943,7 +986,9 @@ export default function Home() {
 
                   // Immediately reload documents from updated backend
                   try {
-                    const docRes = await fetch(getApiUrl("/api/documents"));
+                    const docRes = await fetch(getApiUrl("/api/documents"), {
+                      headers: getApiHeaders(),
+                    });
                     if (docRes.ok) {
                       const docData = await docRes.json();
                       if (docData.documents) setAttachedFiles(docData.documents);
