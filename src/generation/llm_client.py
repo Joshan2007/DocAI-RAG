@@ -295,7 +295,7 @@ class LLMClient:
 
         if unique_sentences:
             top_passages = [s[1] for s in unique_sentences[:2]]
-            response_blocks.append("### Summary of Document Findings\n" + " ".join(top_passages) + "\n\n")
+            response_blocks.append("### Answer\n" + " ".join(top_passages) + "\n\n")
 
             if len(unique_sentences) > 2:
                 response_blocks.append("### Key Details & Specifications\n")

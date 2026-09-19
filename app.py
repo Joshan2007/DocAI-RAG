@@ -136,6 +136,11 @@ with st.sidebar:
         value=False,
         help="Keep this off for a cleaner conversation. Sources remain available when enabled.",
     )
+    add_to_current_set = st.checkbox(
+        "Add to current document set",
+        value=False,
+        help="Off: replace the previous document when you upload a new one. On: keep multiple documents together.",
+    )
 
     if api_key:
         st.success("Gemini enabled")
@@ -161,6 +166,16 @@ if clear_documents:
     st.success("Knowledge base and conversation memory cleared.")
 
 if uploaded_files:
+    upload_signature = tuple(
+        sorted((uploaded_file.name, uploaded_file.size) for uploaded_file in uploaded_files)
+    )
+    previous_signature = st.session_state.get("upload_signature")
+    if previous_signature != upload_signature and not add_to_current_set:
+        pipeline.clear_all()
+        st.session_state.pop("messages", None)
+        st.session_state["uploaded_names"] = set()
+    st.session_state["upload_signature"] = upload_signature
+
     indexed_names = st.session_state.setdefault("uploaded_names", set())
     new_files = [file for file in uploaded_files if file.name not in indexed_names]
     if new_files:
