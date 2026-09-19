@@ -9,11 +9,9 @@ Verifies production RAG requirements and architecture components:
 6. Individual document deletion & index re-balancing
 7. Model switching across all Google Gemini models
 8. Fault-tolerant Local Grounded Synthesizer (zero-crash resilience on 429/offline)
-9. Live FastAPI HTTP endpoints & SSE streaming
+9. Streamlit-compatible pipeline behavior
 """
 
-import json
-import urllib.request
 from pathlib import Path
 import pytest
 
@@ -180,49 +178,3 @@ class TestDocAISystemVerification:
         for m in models:
             self.pipeline.llm.set_model(m)
             assert self.pipeline.llm.model_name == m
-
-    def test_09_live_fastapi_server_endpoints(self):
-        """Req 9: Verifies live HTTP endpoints on running FastAPI instance."""
-        with urllib.request.urlopen("http://127.0.0.1:8000/") as resp:
-            assert resp.status == 200
-            data = json.loads(resp.read().decode())
-            assert data["status"] == "online"
-            assert "DocAI" in data["service"]
-
-        with urllib.request.urlopen("http://127.0.0.1:8000/api/health") as resp:
-            assert resp.status == 200
-            health = json.loads(resp.read().decode())
-            assert health["status"] == "online"
-            assert "model" in health
-
-        with urllib.request.urlopen("http://127.0.0.1:8000/api/documents") as resp:
-            assert resp.status == 200
-            docs = json.loads(resp.read().decode())
-            assert "documents" in docs
-
-        with urllib.request.urlopen("http://127.0.0.1:8000/docs") as resp:
-            assert resp.status == 200
-
-    def test_10_live_sse_chat_stream(self):
-        """Verifies live SSE streaming of thinking tokens and grounded answers."""
-        payload = json.dumps({
-            "message": "What is the P95 latency target?",
-            "model": "gemini-1.5-flash"
-        }).encode("utf-8")
-
-        req = urllib.request.Request(
-            "http://127.0.0.1:8000/api/chat",
-            data=payload,
-            headers={"Content-Type": "application/json"}
-        )
-
-        with urllib.request.urlopen(req) as resp:
-            assert resp.status == 200
-            import http.client
-            try:
-                raw_bytes = resp.read()
-            except http.client.IncompleteRead as e:
-                raw_bytes = e.partial
-            raw_stream = raw_bytes.decode("utf-8", errors="ignore")
-            assert "event: " in raw_stream
-            assert "data: " in raw_stream

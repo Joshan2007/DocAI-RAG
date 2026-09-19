@@ -1,7 +1,6 @@
-# 🧠 DocAI: Production-Grade Mini AI Knowledge Assistant
+# 🧠 DocAI: Streamlit AI Knowledge Assistant
 
-[![Next.js 14](https://img.shields.io/badge/Frontend-Next.js%2014-black.svg?style=for-the-badge&logo=next.js)](https://nextjs.org/)
-[![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688.svg?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
+[![Streamlit](https://img.shields.io/badge/App-Streamlit-FF4B4B.svg?style=for-the-badge&logo=streamlit)](https://streamlit.io/)
 [![ChromaDB](https://img.shields.io/badge/VectorStore-ChromaDB-purple.svg?style=for-the-badge)](https://www.trychroma.com/)
 [![Hybrid Retrieval](https://img.shields.io/badge/Retrieval-BM25%20%2B%20Dense%20(RRF)-green.svg?style=for-the-badge)]()
 [![Gemini](https://img.shields.io/badge/LLM-Google%20Gemini%20Flash%20%26%20Pro-4285F4.svg?style=for-the-badge&logo=google)](https://aistudio.google.com/)
@@ -44,20 +43,16 @@ flowchart TD
         USER_Q --> PROMPT_ENG
         PROMPT_ENG --> GEMINI{"Google Gemini Engine\n(1.5 Flash / 2.0 Flash / 1.5 Pro / 2.5 Flash)"}
         GEMINI -- "Rate Limit 429" --> ROTATE["Automatic Model Rollover / Local Synthesizer"]
-        GEMINI -- "Success" --> STREAM["Dual-Stream SSE Generator\n(event: thinking_token -> event: token)"]
+        GEMINI -- "Success" --> STREAM["Streamed Generation\n(retrieval_complete -> token -> generation_complete)"]
         ROTATE --> STREAM
         STREAM --> EVAL["RAG Triad Automated Evaluator\n- Retrieval Relevance (0.0 - 1.0)\n- Groundedness / Faithfulness (0.0 - 1.0)\n- Citation Coverage & Latency (ms)"]
     end
 
-    subgraph PRESENTATION["5. Modern Web Application (Next.js 14)"]
-        STREAM --> UI["Warm Ivory UI (#FAF9F5)\n- Real-time Thinking Accordion\n- Smooth Typewriter Animations\n- Dedicated Post-Answer Citations\n- In-Box Model Switcher\n- Removable Document Capsules (✕)"]
+    subgraph PRESENTATION["5. Streamlit Application"]
+      STREAM --> UI["Streamlit UI\n- Document uploader\n- Chat interface\n- Model selector\n- Source citations\n- RAG quality metrics"]
         EVAL --> UI
     end
 ```
-
----
-
-## 🔬 Engineering Approach & Technical Implementation
 
 DocAI was engineered to overcome the core vulnerabilities of traditional Retrieval-Augmented Generation: keyword blindness, hallucinations, clumsy citations, and catastrophic failures during API rate-limits.
 
@@ -78,6 +73,7 @@ Single-mode retrieval architectures suffer from fundamental trade-offs:
 - **Sparse Lexical Search** (BM25Okapi) provides exact term-matching precision for acronyms, function names, and technical codes (`AES-256`, `CS-482`, `P95`), but fails when queries use paraphrased phrasing.
 
 DocAI implements a **parallel dual-index architecture**:
+
 1. **Dense Vector Store** ([`src/retrieval/vector_store.py`](src/retrieval/vector_store.py)): Fast, local ONNX embeddings indexed into persistent ChromaDB collections with cosine distance metric.
 2. **Sparse Lexical Index** ([`src/retrieval/bm25_retriever.py`](src/retrieval/bm25_retriever.py)): An in-memory BM25Okapi inverted index tokenized on alphanumeric boundaries.
 
@@ -97,11 +93,9 @@ Score normalization across different retrieval modalities (e.g. cosine similarit
 
 ---
 
-### 4. Dynamic Step-by-Step Thinking & Dual-Stream Generation
+### 4. Dynamic Step-by-Step Thinking & Streamed Generation
 - **Dynamic Reasoning Extraction**: Modern models produce higher quality, better grounded answers when allowed to reason through evidence before speaking. DocAI instructs Gemini via system prompts to formulate an explicit thought trace inside `<thought>...</thought>` tags.
-- **Dual-Stream Server-Sent Events (SSE)**: Rather than buffering or dumping raw thought tags on screen, the FastAPI backend ([`backend/server.py`](backend/server.py)) parses tokens on-the-fly and streams two distinct event channels:
-  1. `event: thinking_token`: Populates the collapsible contemplation drawer with subtle shimmer animation in real-time.
-  2. `event: token`: Paces answer tokens chunk-by-chunk using a natural typewriter animation directly into the message body.
+- **Streaming Generation**: The pipeline exposes retrieval metadata, answer tokens, and final evaluation directly to Streamlit while keeping document retrieval and answer generation in one process.
 - **Pure Google Gemini Architecture**: Configured for high-throughput, low-latency reasoning across four specialized models:
   - **Gemini 1.5 Flash** (Default • Recommended general assistant)
   - **Gemini 2.0 Flash** (Next-Gen high-speed multimodal reasoning)
@@ -128,11 +122,8 @@ Every synthesized answer is evaluated in real-time by [`src/evaluation/evaluator
 
 ### 7. Granular Document Lifecycle & Self-Healing Index
 Unlike primitive RAG demos where the entire database must be wiped to update documents, DocAI features an interactive document manager:
-- Each uploaded file is rendered as an individual capsule chip in the input interface.
-- Clicking the `✕` button triggers `DELETE /api/documents/{filename}`:
-  1. Identifies and purges all associated chunk IDs from the ChromaDB collection.
-  2. Removes the file's text from memory and re-tokenizes the remaining corpus.
-  3. Rebuilds the BM25Okapi index dynamically in sub-second time without index corruptions or restart requirements.
+- Each uploaded file is indexed directly from Streamlit's file uploader.
+- The sidebar can clear the indexed knowledge base and conversation memory without restarting the app.
 
 ---
 
@@ -157,17 +148,7 @@ Unlike primitive RAG demos where the entire database must be wiped to update doc
 
 ```
 RAG/
-├── frontend/                     # Modern Next.js 14 Web Application
-│   ├── app/
-│   │   ├── page.tsx              # Main chat interface, model switcher & document chips
-│   │   ├── layout.tsx            # Root layout, fonts & metadata
-│   │   └── globals.css           # Warm paper theme & shimmer animations
-│   ├── components/
-│   │   └── MarkdownRenderer.tsx  # Markdown renderer with clean citation parser
-│   ├── package.json              # Next.js & Tailwind dependencies
-│   └── next.config.js            # API rewrites & production routing
-├── backend/                      # FastAPI Server
-│   └── server.py                 # Multi-format ingestion, deletion, SSE chat & telemetry
+├── app.py                        # Self-contained Streamlit application
 ├── src/                          # Modular Production RAG Engine
 │   ├── config.py                 # Hyperparameters, paths & Gemini model list
 │   ├── pipeline.py               # Orchestrator connecting all RAG components
@@ -192,49 +173,42 @@ RAG/
 │   ├── enterprise_cloud_security_policy.md
 │   ├── distributed_systems_syllabus.md
 │   └── quantum_computing_research.txt
-├── tests/                        # Comprehensive test suite
-│   ├── test_full_system_verification.py  # End-to-end production verification suite
+├── tests/                        # Pipeline and integration test suite
 │   ├── test_rag_pipeline.py              # Ingestion, chunking, retrieval & evaluation tests
 │   └── test_end_to_end.py                # Full pipeline integration tests
-├── Dockerfile                    # Production container image for backend
-├── render.yaml                   # 1-click blueprint for Render deployment
-├── vercel.json                   # Vercel deployment configuration
 ├── requirements.txt              # Clean Python dependencies
-└── run_app.py                    # One-click launcher for backend + frontend
+└── run_app.py                    # One-click Streamlit launcher
 ```
 
 ---
 
 ## 🚀 Local Quickstart (One Command)
 
-**Requirements**: Python 3.10+ and Node.js 18+ installed on your machine. That's it.
+**Requirements**: Python 3.10+.
 
 ```bash
 git clone https://github.com/Joshan2007/DocAI-RAG.git
 cd DocAI-RAG
-python run_app.py
+python -m pip install -r requirements.txt
+streamlit run app.py
 ```
 
-The launcher does everything automatically on first run:
+The optional launcher does everything automatically on first run:
 
 | Step | What happens |
 |------|-------------|
 | **1** | Creates a Python virtual environment (`.venv`) |
 | **2** | Installs all Python dependencies from `requirements.txt` |
-| **3** | Installs all Node.js dependencies (`npm install` in `frontend/`) |
-| **4** | Prompts you for your **Gemini API key** (one time only — saved to `.env`) |
-| **5** | Starts both servers |
+| **3** | Prompts you for your **Gemini API key** (one time only — saved to `.env`) |
+| **4** | Starts Streamlit |
 
 > Get a free Gemini API key at [https://aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey)
 
-On every subsequent run, steps 1–3 are skipped (already installed) and step 4 is skipped (key already in `.env`). Cold start to app in < 5 seconds.
+On every subsequent run, installed dependencies and the saved key are reused.
 
-Once running:
-- **Web Interface** → [http://localhost:3000](http://localhost:3000)
-- **API Explorer** → [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
-- **Health Check** → [http://127.0.0.1:8000/api/health](http://127.0.0.1:8000/api/health)
+Once running, open [http://localhost:8501](http://localhost:8501). Enter the Gemini key in the sidebar; no separate backend is needed.
 
-Press `Ctrl+C` to stop both servers cleanly.
+Press `Ctrl+C` to stop Streamlit cleanly.
 
 ### Run Automated Tests
 ```bash
@@ -249,42 +223,14 @@ pytest tests/ -v
 
 ---
 
-## 🌐 Production Deployment Guide
+## 🌐 Streamlit Cloud Deployment
 
-DocAI has a decoupled, modern cloud architecture:
-- **Frontend**: Next.js 14 deployed to **Vercel** (Edge CDN, fast loading, zero configuration).
-- **Backend**: FastAPI + ChromaDB deployed to **Render**, **Railway**, **Google Cloud Run**, or **Fly.io** (persistent storage, Python runtime).
+1. Push this repository to GitHub.
+2. Open [share.streamlit.io](https://share.streamlit.io/) and choose **New app**.
+3. Select the repository, branch, and set the main file to `app.py`.
+4. Deploy. No Render service, Vercel project, backend URL, or separate server is required.
 
----
-
-### Step 1: Deploy Backend (FastAPI + ChromaDB) to Render (Free & 1-Click)
-
-1. Go to [Render.com](https://render.com/) and click **New +** $\to$ **Blueprint**.
-2. Select your repository `Joshan2007/DocAI-RAG`.
-3. Render automatically detects [`render.yaml`](render.yaml) and configures:
-   - Build command: `pip install -r requirements.txt`
-   - Start command: `uvicorn backend.server:app --host 0.0.0.0 --port $PORT`
-4. Under Environment Variables, add:
-   - `GEMINI_API_KEY`: Your Gemini API key.
-5. Click **Apply**. Render will deploy your service and provide a public URL:
-   `https://docai-backend.onrender.com`
-
-*(Alternatively, use the included [`Dockerfile`](Dockerfile) to deploy to Railway, Google Cloud Run, or any Docker host).*
-
----
-
-### Step 2: Deploy Frontend to Vercel via GitHub Integration
-
-1. Go to [Vercel.com](https://vercel.com/) and click **Add New...** $\to$ **Project**.
-2. Select your repository `Joshan2007/DocAI-RAG` from your GitHub account.
-3. Configure settings:
-   - **Framework Preset**: Next.js (detected automatically).
-   - **Root Directory**: `frontend` (or leave as root, handled by [`vercel.json`](vercel.json)).
-4. Under **Environment Variables**, add:
-   - `NEXT_PUBLIC_API_URL`: Your backend URL from Step 1 (e.g. `https://docai-backend.onrender.com`).
-5. Click **Deploy**.
-
-Vercel will build and deploy the Next.js 14 frontend in seconds! Any future pushes to your GitHub repository will trigger automatic deployments.
+Visitors paste their own Gemini API key into the sidebar. To provide a default key, add `GEMINI_API_KEY` under the app's Streamlit Cloud secrets.
 
 ---
 

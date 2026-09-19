@@ -43,9 +43,12 @@ chroma_db/
 .DS_Store
 Thumbs.db
 
-# Node / Next.js
+# Local Python environment
+.venv/
+__pycache__/
+*.pyc
+
+# Legacy frontend build artifacts
 node_modules/
-frontend/node_modules/
 .next/
-frontend/.next/
 

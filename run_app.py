@@ -3,10 +3,8 @@ DocAI — One-Command Launcher
 Run this script once. It handles everything automatically:
   • Creates a Python virtual environment (.venv) if it doesn't exist
   • Installs all Python dependencies (requirements.txt)
-  • Installs all Node dependencies (frontend/node_modules)
   • Prompts for your Gemini API key (one time only, saved to .env)
-  • Starts the FastAPI backend on http://127.0.0.1:8000
-  • Starts the Next.js frontend on http://localhost:3000
+    • Starts the Streamlit app on http://localhost:8501
 
 Usage:
     python run_app.py
@@ -14,13 +12,10 @@ Usage:
 
 import sys
 import os
-import time
 import subprocess
-import signal
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent
-FRONTEND_DIR = ROOT_DIR / "frontend"
 VENV_DIR = ROOT_DIR / ".venv"
 ENV_FILE = ROOT_DIR / ".env"
 
@@ -34,12 +29,11 @@ def cyan(t):   return _c("36", t)
 def red(t):    return _c("31", t)
 def bold(t):   return _c("1",  t)
 
-# ── Detect the right Python / pip / npm executables ───────────────────────────
+# ── Detect the right Python / pip executable ─────────────────────────────────
 IS_WIN = os.name == "nt"
 
 VENV_PYTHON = VENV_DIR / ("Scripts" if IS_WIN else "bin") / ("python.exe" if IS_WIN else "python")
 VENV_PIP    = VENV_DIR / ("Scripts" if IS_WIN else "bin") / ("pip.exe"    if IS_WIN else "pip")
-NPM_CMD     = "npm.cmd" if IS_WIN else "npm"
 
 # ── Utilities ──────────────────────────────────────────────────────────────────
 def run(cmd, cwd=None, check=True):
@@ -60,46 +54,9 @@ def ensure_venv():
     run([sys.executable, "-m", "venv", str(VENV_DIR)])
     print(green("  ✔ Virtual environment created."))
 
-# ══════════════════════════════════════════════════════════════════════════════
-# PHASE 2 — Python dependencies
-# ══════════════════════════════════════════════════════════════════════════════
-def ensure_python_deps():
-    req_file = ROOT_DIR / "requirements.txt"
-    if not req_file.exists():
-        print(red("  ✘ requirements.txt not found — skipping pip install."))
-        return
-    # Sentinel file avoids re-installing on every launch
-    sentinel = VENV_DIR / ".deps_installed"
-    req_mtime = req_file.stat().st_mtime
-    if sentinel.exists() and sentinel.stat().st_mtime >= req_mtime:
-        print(green("  ✔ Python dependencies already installed."))
-        return
-    print(yellow("  Installing Python dependencies (this may take a minute)…"))
-    run([str(VENV_PIP), "install", "-r", str(req_file)])
-    sentinel.touch()
-    print(green("  ✔ Python dependencies installed."))
-
-# ══════════════════════════════════════════════════════════════════════════════
-# PHASE 3 — Node dependencies
-# ══════════════════════════════════════════════════════════════════════════════
-def ensure_node_deps():
-    node_modules = FRONTEND_DIR / "node_modules"
-    pkg_json     = FRONTEND_DIR / "package.json"
-    sentinel     = FRONTEND_DIR / ".npm_installed"
-
-    if not pkg_json.exists():
-        print(red("  ✘ frontend/package.json not found — skipping npm install."))
-        return
-
-    pkg_mtime = pkg_json.stat().st_mtime
-    if sentinel.exists() and sentinel.stat().st_mtime >= pkg_mtime and node_modules.exists():
-        print(green("  ✔ Node dependencies already installed."))
-        return
-
-    print(yellow("  Installing Node dependencies (this may take a minute)…"))
-    run([NPM_CMD, "install"], cwd=FRONTEND_DIR)
-    sentinel.touch()
-    print(green("  ✔ Node dependencies installed."))
+def start_streamlit():
+    print(yellow("  Starting Streamlit app on http://localhost:8501 …"))
+    run([str(VENV_PYTHON), "-m", "streamlit", "run", "app.py"], cwd=ROOT_DIR)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PHASE 4 — Gemini API key
@@ -172,57 +129,10 @@ def ensure_api_key():
     print(green("  ✔ API key saved to .env — you won't be asked again."))
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PHASE 5 — Launch servers
+# PHASE 5 — Launch Streamlit
 # ══════════════════════════════════════════════════════════════════════════════
 def start_servers():
-    print(yellow("  Starting FastAPI backend on http://127.0.0.1:8000 …"))
-    backend_proc = subprocess.Popen(
-        [str(VENV_PYTHON), "-m", "uvicorn", "backend.server:app",
-         "--host", "127.0.0.1", "--port", "8000"],
-        cwd=str(ROOT_DIR),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-    )
-
-    print(yellow("  Starting Next.js frontend on http://localhost:3000 …"))
-    next_built = (FRONTEND_DIR / ".next").exists()
-    frontend_script = "start" if next_built else "dev"
-    frontend_proc = subprocess.Popen(
-        [NPM_CMD, "run", frontend_script],
-        cwd=str(FRONTEND_DIR),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-    )
-
-    time.sleep(4)
-
-    print()
-    print(bold("=" * 65))
-    print(bold("  🚀 DocAI is LIVE!"))
-    print(f"  {green('Frontend')} → http://localhost:3000")
-    print(f"  {green('Backend API')} → http://127.0.0.1:8000/docs")
-    print(bold("=" * 65))
-    print(cyan("  Press Ctrl+C to stop both servers.\n"))
-
-    def cleanup(*_):
-        print(yellow("\n  Shutting down servers…"))
-        backend_proc.terminate()
-        frontend_proc.terminate()
-        sys.exit(0)
-
-    signal.signal(signal.SIGINT, cleanup)
-    if hasattr(signal, "SIGTERM"):
-        signal.signal(signal.SIGTERM, cleanup)
-
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        cleanup()
+    start_streamlit()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # MAIN
@@ -239,11 +149,8 @@ if __name__ == "__main__":
     step(2, 5, "Checking Python dependencies…")
     ensure_python_deps()
 
-    step(3, 5, "Checking Node.js dependencies…")
-    ensure_node_deps()
-
-    step(4, 5, "Checking Gemini API key…")
+    step(3, 4, "Checking Gemini API key…")
     ensure_api_key()
 
-    step(5, 5, "Launching servers…")
+    step(4, 4, "Launching Streamlit…")
     start_servers()
