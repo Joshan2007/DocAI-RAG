@@ -111,13 +111,17 @@ class LLMClient:
                     else:
                         return f"[Gemini API Error: {err_str}]"
 
-            # If all candidates hit 429 / quota exhaustion, activate Local Grounded Synthesizer
-            if any(k in last_err.lower() for k in ["429", "resource_exhausted", "quota", "rate limit", "exhausted"]):
+            # If every candidate is unavailable or quota-exhausted, stay useful with local grounding.
+            last_error_lower = last_err.lower()
+            if any(k in last_error_lower for k in [
+                "404", "not_found", "not found", "not available", "deprecated",
+                "429", "resource_exhausted", "quota", "rate limit", "exhausted",
+            ]):
                 return "".join(self._extractive_synthesis(
                     prompt=prompt,
                     user_query=user_query,
                     retrieved_chunks=retrieved_chunks,
-                    quota_notice=True,
+                    quota_notice=any(k in last_error_lower for k in ["429", "resource_exhausted", "quota", "rate limit", "exhausted"]),
                     error_msg=last_err
                 ))
             return f"[Gemini API Error: {last_err}]"
@@ -379,13 +383,17 @@ class LLMClient:
                         yield f"\n[Error during streaming: {err_str}]"
                         return
 
-            # If all candidates hit 429 quota limits, fallback seamlessly to Local Grounded Synthesizer
-            if any(k in last_err.lower() for k in ["429", "resource_exhausted", "quota", "rate limit", "exhausted"]):
+            # If every candidate is unavailable or quota-exhausted, use local grounded synthesis.
+            last_error_lower = last_err.lower()
+            if any(k in last_error_lower for k in [
+                "404", "not_found", "not found", "not available", "deprecated",
+                "429", "resource_exhausted", "quota", "rate limit", "exhausted",
+            ]):
                 yield from self._extractive_synthesis(
                     prompt=prompt,
                     user_query=user_query,
                     retrieved_chunks=retrieved_chunks,
-                    quota_notice=True,
+                    quota_notice=any(k in last_error_lower for k in ["429", "resource_exhausted", "quota", "rate limit", "exhausted"]),
                     error_msg=last_err
                 )
                 return

@@ -102,7 +102,7 @@ def ensure_api_key():
     # Write / update .env
     env_vars["GEMINI_API_KEY"] = key
     if "DEFAULT_MODEL" not in env_vars:
-        env_vars["DEFAULT_MODEL"] = "gemini-2.0-flash"
+        env_vars["DEFAULT_MODEL"] = "gemini-2.5-flash"
 
     lines = []
     if ENV_FILE.exists():

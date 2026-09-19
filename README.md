@@ -100,11 +100,10 @@ Score normalization across different retrieval modalities (e.g. cosine similarit
 ### 4. Dynamic Step-by-Step Thinking & Streamed Generation
 - **Dynamic Reasoning Extraction**: Modern models produce higher quality, better grounded answers when allowed to reason through evidence before speaking. DocAI instructs Gemini via system prompts to formulate an explicit thought trace inside `<thought>...</thought>` tags.
 - **Streaming Generation**: The pipeline exposes retrieval metadata, answer tokens, and final evaluation directly to Streamlit while keeping document retrieval and answer generation in one process.
-- **Pure Google Gemini Architecture**: Configured for high-throughput, low-latency reasoning across four specialized models:
-  - **Gemini 1.5 Flash** (Default • Recommended general assistant)
-  - **Gemini 2.0 Flash** (Next-Gen high-speed multimodal reasoning)
-  - **Gemini 1.5 Pro** (Deep reasoning for complex multi-document synthesis)
-  - **Gemini 2.5 Flash** (Experimental preview reasoning engine)
+- **Pure Google Gemini Architecture**: Configured for high-throughput, low-latency reasoning across current Gemini models:
+  - **Gemini 2.5 Flash** (Default • Recommended general assistant)
+  - **Gemini 2.5 Pro** (Deep reasoning for complex multi-document synthesis)
+  - **Gemini 2.0 Flash** (High-speed multimodal reasoning)
 
 ---
 
