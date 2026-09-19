@@ -24,12 +24,18 @@ from src.pipeline import DocAIPipeline
 
 
 AVAILABLE_MODELS = [
-    "gemini-1.5-flash",
-    "gemini-2.0-flash",
     "gemini-2.5-flash",
+    "gemini-2.0-flash",
+    "gemini-2.5-pro",
 ]
 SUPPORTED_EXTENSIONS = ["pdf", "docx", "xlsx", "xls", "csv", "tsv", "md", "txt", "py", "json"]
 
+
+@st.cache_data(show_spinner=False, ttl=300)
+def fetch_user_models(key: str) -> list[str]:
+    """Dynamically discover available models on the provided Gemini API key."""
+    from src.generation.llm_client import LLMClient
+    return LLMClient.get_available_models(key)
 
 
 def get_secret_api_key() -> str:
@@ -131,7 +137,13 @@ with st.sidebar:
         help="For Streamlit Cloud, add GEMINI_API_KEY in App settings > Secrets.",
     ).strip()
 
-    model_name = st.selectbox("Generation model", AVAILABLE_MODELS, index=0)
+    models_to_display = AVAILABLE_MODELS
+    if api_key:
+        discovered = fetch_user_models(api_key)
+        if discovered:
+            models_to_display = discovered
+
+    model_name = st.selectbox("Generation model", models_to_display, index=0)
 
     # Sync API key and model dynamically without recreating pipeline
     pipeline.llm.set_api_key(api_key)

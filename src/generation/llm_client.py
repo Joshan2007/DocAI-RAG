@@ -66,6 +66,32 @@ class LLMClient:
         else:
             self.client = None
 
+    @classmethod
+    def get_available_models(cls, api_key: str) -> List[str]:
+        """Queries Google Gemini API to discover active models available on the API key."""
+        if not api_key:
+            return FALLBACK_MODELS
+        try:
+            if GENAI_NEW_SDK:
+                client = genai.Client(api_key=api_key)
+                models = []
+                for m in client.models.list():
+                    name = getattr(m, "name", "")
+                    if "/" in name:
+                        name = name.split("/")[-1]
+                    if name.startswith("gemini") and not name.endswith("-vision") and "embedding" not in name:
+                        actions = getattr(m, "supported_actions", None)
+                        if actions is None or "generateContent" in actions:
+                            models.append(name)
+                if models:
+                    preferred = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.5-pro"]
+                    ordered = [m for m in preferred if m in models]
+                    ordered.extend([m for m in models if m not in ordered])
+                    return ordered
+        except Exception:
+            pass
+        return FALLBACK_MODELS
+
     def _get_candidate_models(self) -> List[str]:
         """Returns ordered list of candidate models for retry on 404 / deprecation."""
         models = [self.model_name]
@@ -223,9 +249,9 @@ class LLMClient:
                 yield w + " "
                 time.sleep(0.004)
         elif error_msg:
-            clean_err = error_msg.split('\n')[0]
+            clean_err = error_msg.split('\n')[0].strip()
             if "404" in clean_err or "not found" in clean_err.lower():
-                clean_err = f"Model '{self.model_name}' is not available on this API key. We recommend selecting 'gemini-1.5-flash' in the sidebar."
+                clean_err = f"Model '{self.model_name}' is not found or has been retired. Please select 'gemini-2.5-flash' or 'gemini-2.0-flash' in the sidebar."
             banner = (
                 f"⚠️ **Gemini Notice**: {clean_err}\n\n"
                 "DocAI has engaged the **Local Grounded Synthesizer** using Hybrid Retrieval (ChromaDB + BM25) to answer directly from your uploaded document.\n\n---\n\n"
