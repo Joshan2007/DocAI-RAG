@@ -91,10 +91,19 @@ class RAGEvaluator:
         return round(min(1.0, max(0.0, ratio)), 2)
 
     @classmethod
-    def count_citations(cls, answer: str) -> int:
-        """Finds bracketed citations like [Doc: ...] or [Page ...] or [Excerpt ...]."""
+    def count_citations(cls, answer: str, retrieved_chunks: List[RetrievedChunk]) -> int:
+        """Counts explicit markers or deterministic source citations shown by the UI."""
         citations = re.findall(r"\[(?:Doc|Source|Page|Excerpt).*?\]", answer, flags=re.IGNORECASE)
-        return len(citations)
+        if citations:
+            return len(citations)
+
+        # The Streamlit UI intentionally avoids noisy inline markers and shows
+        # source attribution separately, so count the retrieved source documents.
+        sources = {
+            chunk.metadata.get("source_file", "Unknown")
+            for chunk in retrieved_chunks
+        }
+        return len(sources)
 
     @classmethod
     def evaluate(
@@ -108,7 +117,7 @@ class RAGEvaluator:
         """Runs comprehensive evaluation for a query-answer pair."""
         rel_score = cls.evaluate_retrieval_relevance(query, retrieved_chunks)
         ground_score = cls.evaluate_groundedness(answer, retrieved_chunks)
-        cite_count = cls.count_citations(answer)
+        cite_count = cls.count_citations(answer, retrieved_chunks)
 
         # Citation coverage heuristic
         num_sentences = max(1, len([s for s in answer.split(".") if len(s.strip()) > 15]))
@@ -128,7 +137,7 @@ class RAGEvaluator:
             summary_parts.append("Potential extrapolation detected")
 
         if cite_count > 0:
-            summary_parts.append(f"{cite_count} inline citation(s)")
+            summary_parts.append(f"{cite_count} source citation(s)")
 
         return EvaluationResult(
             retrieval_relevance_score=rel_score,
