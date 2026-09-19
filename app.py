@@ -6,6 +6,7 @@ Run locally with:
 
 import io
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any, Dict, Iterable
@@ -41,6 +42,33 @@ def get_secret_api_key() -> str:
         return str(st.secrets.get("GEMINI_API_KEY", "")).strip()
     except (FileNotFoundError, KeyError):
         return os.getenv("GEMINI_API_KEY", "").strip()
+
+
+def split_thought(text: str) -> tuple[str, str]:
+    """Separate optional model reasoning from the user-facing answer."""
+    thought_match = re.search(r"<thought>\s*(.*?)\s*</thought>\s*", text, re.IGNORECASE | re.DOTALL)
+    if not thought_match:
+        if re.search(r"<thought>\s*", text, re.IGNORECASE):
+            return "", ""
+        return "", text.strip()
+
+    thought = thought_match.group(1).strip()
+    answer = (text[:thought_match.start()] + text[thought_match.end():]).strip()
+    return thought, answer
+
+
+def render_answer(text: str, placeholder: Any = None) -> tuple[str, str]:
+    """Render only the clean answer and return the extracted reasoning and answer."""
+    thought, answer = split_thought(text)
+    target = placeholder or st
+    target.markdown(answer or "_Preparing an answer..._")
+    return thought, answer
+
+
+def render_reasoning(thought: str) -> None:
+    if thought:
+        with st.expander("Reasoning", expanded=False):
+            st.caption(thought)
 
 
 def render_citations(citations: Iterable[Dict[str, Any]]) -> None:
@@ -129,6 +157,7 @@ messages = st.session_state.setdefault("messages", [])
 for message in messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
+        render_reasoning(message.get("thinking", ""))
         if message.get("citations"):
             with st.expander("Sources"):
                 render_citations(message["citations"])
@@ -144,6 +173,7 @@ if question:
     with st.chat_message("assistant"):
         answer_placeholder = st.empty()
         answer_parts = []
+        thought = ""
         citations = []
         evaluation = None
 
@@ -153,7 +183,7 @@ if question:
                     citations = event["citations"]
                 elif event["type"] == "token":
                     answer_parts.append(event["token"])
-                    answer_placeholder.markdown("".join(answer_parts))
+                    thought, _ = render_answer("".join(answer_parts), answer_placeholder)
                 elif event["type"] == "generation_complete":
                     evaluation = event["evaluation"]
         except Exception as error:
@@ -161,7 +191,8 @@ if question:
 
         answer = "".join(answer_parts)
         if answer:
-            answer_placeholder.markdown(answer)
+            thought, answer = render_answer(answer, answer_placeholder)
+            render_reasoning(thought)
             if citations:
                 with st.expander("Sources"):
                     render_citations(citations)
@@ -170,6 +201,7 @@ if question:
                 {
                     "role": "assistant",
                     "content": answer,
+                    "thinking": thought,
                     "citations": citations,
                     "evaluation": evaluation,
                 }
