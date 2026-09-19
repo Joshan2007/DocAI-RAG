@@ -24,22 +24,12 @@ from src.pipeline import DocAIPipeline
 
 
 AVAILABLE_MODELS = [
-    "gemini-2.5-flash",
-    "gemini-2.5-pro",
     "gemini-2.0-flash",
+    "gemini-1.5-flash",
+    "gemini-1.5-pro",
 ]
 SUPPORTED_EXTENSIONS = ["pdf", "docx", "xlsx", "xls", "csv", "tsv", "md", "txt", "py", "json"]
 
-
-@st.cache_resource(show_spinner="Loading DocAI retrieval engine...")
-def get_pipeline(api_key: str, model_name: str, session_id: str) -> DocAIPipeline:
-    session_directory = Path(tempfile.gettempdir()) / "docai_streamlit" / session_id
-    pipeline = DocAIPipeline(
-        api_key=api_key or None,
-        persist_directory=str(session_directory),
-    )
-    pipeline.llm.set_model(model_name)
-    return pipeline
 
 
 def get_secret_api_key() -> str:
@@ -118,10 +108,20 @@ def render_metrics(evaluation: Any) -> None:
     columns[3].metric("Grounded", "Yes" if evaluation.is_grounded else "Review")
 
 
+# ── Page Setup ────────────────────────────────────────────────────────────────
 st.set_page_config(page_title="DocAI Knowledge Assistant", page_icon="📚", layout="wide")
 st.title("DocAI Knowledge Assistant")
 st.caption("Upload documents, search their contents, and get grounded answers with citations.")
 
+# ── Pipeline Lifecycle in Session State (In-Memory for Zero Disk Leaks) ───────
+if "pipeline" not in st.session_state:
+    st.session_state["pipeline"] = DocAIPipeline(
+        api_key=None,
+        persist_directory=None,  # Ephemeral in-memory ChromaDB: 0 disk leaks, complete isolation
+    )
+pipeline: DocAIPipeline = st.session_state["pipeline"]
+
+# ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.header("Configuration")
     api_key = st.text_input(
@@ -130,73 +130,113 @@ with st.sidebar:
         type="password",
         help="For Streamlit Cloud, add GEMINI_API_KEY in App settings > Secrets.",
     ).strip()
-    model_name = st.selectbox("Generation model", AVAILABLE_MODELS)
+
+    model_name = st.selectbox("Generation model", AVAILABLE_MODELS, index=0)
+
+    # Sync API key and model dynamically without recreating pipeline
+    pipeline.llm.set_api_key(api_key or None)
+    pipeline.llm.set_model(model_name)
+
     show_sources = st.checkbox(
         "Show source excerpts",
         value=False,
         help="Keep this off for a cleaner conversation. Sources remain available when enabled.",
     )
-    add_to_current_set = st.checkbox(
-        "Add to current document set",
-        value=False,
-        help="Off: replace the previous document when you upload a new one. On: keep multiple documents together.",
+
+    doc_mode = st.radio(
+        "Document mode",
+        options=["Single document (replaces previous)", "Multi-document (combine documents)"],
+        index=0,
+        help="Single document mode automatically purges previous documents and chat history when you upload a new document.",
     )
+    is_multi_doc = "Multi-document" in doc_mode
 
     if api_key:
-        st.success("Gemini enabled")
+        st.success(f"Gemini active ({model_name})")
     else:
-        st.info("Local grounded mode")
+        st.info("Local grounded mode (enter API key above for Gemini reasoning)")
 
     st.divider()
     st.subheader("Documents")
+
     uploaded_files = st.file_uploader(
         "Add files to the knowledge base",
         type=SUPPORTED_EXTENSIONS,
         accept_multiple_files=True,
     )
-    clear_documents = st.button("Clear indexed documents", use_container_width=True)
 
-session_id = st.session_state.setdefault("session_id", uuid.uuid4().hex)
-pipeline = get_pipeline(api_key, model_name, session_id)
+    # ── Synchronize Uploaded Files with Pipeline ──────────────────────────────
+    current_uploaded_dict = {f.name: f for f in uploaded_files} if uploaded_files else {}
+    current_names = set(current_uploaded_dict.keys())
+    indexed_names = set(pipeline.indexed_files.keys())
 
-if clear_documents:
-    pipeline.clear_all()
-    st.session_state.pop("messages", None)
-    st.session_state.pop("uploaded_names", None)
-    st.success("Knowledge base and conversation memory cleared.")
-
-if uploaded_files:
-    upload_signature = tuple(
-        sorted((uploaded_file.name, uploaded_file.size) for uploaded_file in uploaded_files)
-    )
-    previous_signature = st.session_state.get("upload_signature")
-    if previous_signature != upload_signature and not add_to_current_set:
-        pipeline.clear_all()
-        st.session_state.pop("messages", None)
-        st.session_state["uploaded_names"] = set()
-    st.session_state["upload_signature"] = upload_signature
-
-    indexed_names = st.session_state.setdefault("uploaded_names", set())
-    new_files = [file for file in uploaded_files if file.name not in indexed_names]
-    if new_files:
-        with st.status("Indexing documents...", expanded=True) as status:
-            for uploaded_file in new_files:
+    if not is_multi_doc:
+        # Single document mode: only index the latest uploaded file
+        if uploaded_files:
+            latest_file = uploaded_files[-1]
+            if list(pipeline.indexed_files.keys()) != [latest_file.name]:
+                # Completely purge previous documents and reset conversation
+                pipeline.clear_all()
+                st.session_state["messages"] = []
                 try:
                     result = pipeline.ingest_file(
-                        io.BytesIO(uploaded_file.getvalue()),
-                        filename=uploaded_file.name,
+                        io.BytesIO(latest_file.getvalue()),
+                        filename=latest_file.name,
                     )
-                    indexed_names.add(uploaded_file.name)
-                    st.write(
-                        f"Indexed **{uploaded_file.name}**: "
-                        f"{result['metadata']['total_chunks']} chunks"
+                    st.sidebar.success(
+                        f"Loaded **{latest_file.name}** ({result['metadata']['total_chunks']} chunks)"
                     )
                 except Exception as error:
-                    st.error(f"Could not index {uploaded_file.name}: {error}")
-            status.update(label="Document indexing complete", state="complete")
+                    st.sidebar.error(f"Could not index {latest_file.name}: {error}")
+        else:
+            if pipeline.indexed_files:
+                pipeline.clear_all()
+                st.session_state["messages"] = []
+    else:
+        # Multi-document mode:
+        # 1. Remove files that were removed from the uploader widget
+        for removed in indexed_names - current_names:
+            pipeline.delete_document(removed)
+            st.sidebar.info(f"Removed **{removed}**")
 
+        # 2. Ingest newly added files
+        for name, f in current_uploaded_dict.items():
+            if name not in pipeline.indexed_files:
+                try:
+                    result = pipeline.ingest_file(
+                        io.BytesIO(f.getvalue()),
+                        filename=name,
+                    )
+                    st.sidebar.success(
+                        f"Indexed **{name}** ({result['metadata']['total_chunks']} chunks)"
+                    )
+                except Exception as error:
+                    st.sidebar.error(f"Could not index {name}: {error}")
+
+    # Display active documents in knowledge base
+    if pipeline.indexed_files:
+        st.caption(f"**Active Documents ({len(pipeline.indexed_files)}):**")
+        for fname, meta in pipeline.indexed_files.items():
+            st.write(f"- 📄 `{fname}` ({meta.get('total_chunks', 0)} chunks)")
+    else:
+        st.caption("No documents currently indexed.")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Clear Docs", use_container_width=True):
+            pipeline.clear_all()
+            st.session_state["messages"] = []
+            st.rerun()
+    with col2:
+        if st.button("Clear Chat", use_container_width=True):
+            pipeline.clear_memory()
+            st.session_state["messages"] = []
+            st.rerun()
+
+# ── Main Conversation Area ────────────────────────────────────────────────────
 st.subheader("Conversation")
 messages = st.session_state.setdefault("messages", [])
+
 for message in messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
@@ -210,43 +250,46 @@ for message in messages:
 
 question = st.chat_input("Ask a question about your documents")
 if question:
-    messages.append({"role": "user", "content": question})
-    with st.chat_message("user"):
-        st.markdown(question)
+    if not pipeline.indexed_files:
+        st.warning("⚠️ No documents are currently loaded. Please upload a document in the sidebar first.")
+    else:
+        messages.append({"role": "user", "content": question})
+        with st.chat_message("user"):
+            st.markdown(question)
 
-    with st.chat_message("assistant"):
-        answer_placeholder = st.empty()
-        answer_parts = []
-        thought = ""
-        citations = []
-        evaluation = None
+        with st.chat_message("assistant"):
+            answer_placeholder = st.empty()
+            answer_parts = []
+            thought = ""
+            citations = []
+            evaluation = None
 
-        try:
-            for event in pipeline.ask_stream(question):
-                if event["type"] == "retrieval_complete":
-                    citations = event["citations"]
-                elif event["type"] == "token":
-                    answer_parts.append(event["token"])
-                    thought, _ = render_answer("".join(answer_parts), answer_placeholder)
-                elif event["type"] == "generation_complete":
-                    evaluation = event["evaluation"]
-        except Exception as error:
-            st.error(f"Unable to answer this question: {error}")
+            try:
+                for event in pipeline.ask_stream(question):
+                    if event["type"] == "retrieval_complete":
+                        citations = event["citations"]
+                    elif event["type"] == "token":
+                        answer_parts.append(event["token"])
+                        thought, _ = render_answer("".join(answer_parts), answer_placeholder)
+                    elif event["type"] == "generation_complete":
+                        evaluation = event["evaluation"]
+            except Exception as error:
+                st.error(f"Unable to answer this question: {error}")
 
-        answer = "".join(answer_parts)
-        if answer:
-            thought, answer = render_answer(answer, answer_placeholder)
-            render_reasoning(thought)
-            render_source_summary(citations)
-            if show_sources and citations:
-                render_citations(citations)
-            render_metrics(evaluation)
-            messages.append(
-                {
-                    "role": "assistant",
-                    "content": answer,
-                    "thinking": thought,
-                    "citations": citations,
-                    "evaluation": evaluation,
-                }
-            )
+            answer = "".join(answer_parts)
+            if answer:
+                thought, answer = render_answer(answer, answer_placeholder)
+                render_reasoning(thought)
+                render_source_summary(citations)
+                if show_sources and citations:
+                    render_citations(citations)
+                render_metrics(evaluation)
+                messages.append(
+                    {
+                        "role": "assistant",
+                        "content": answer,
+                        "thinking": thought,
+                        "citations": citations,
+                        "evaluation": evaluation,
+                    }
+                )

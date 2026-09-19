@@ -187,27 +187,32 @@ class DocAIPipeline:
 
     def delete_document(self, filename: str) -> bool:
         """Removes a specific document from ChromaDB vector store, BM25 index, and registry."""
+        doc_meta = self.indexed_files.get(filename, {})
+        from pathlib import Path
+        doc_id = doc_meta.get("doc_id", Path(filename).stem)
+
+        # 1. Delete from ChromaDB vector store (by filename and doc_id)
+        try:
+            self.retriever.vector_store.delete_document(filename)
+            self.retriever.vector_store.delete_document(doc_id)
+        except Exception:
+            pass
+
+        # 2. Delete from BM25 index and rebuild
+        try:
+            self.retriever.bm25_retriever.delete_document(filename)
+        except Exception:
+            pass
+
+        # 3. Remove from indexed_files registry
         if filename in self.indexed_files:
-            doc_meta = self.indexed_files[filename]
-            from pathlib import Path
-            doc_id = doc_meta.get("doc_id", Path(filename).stem)
-
-            # 1. Delete from ChromaDB vector store
-            try:
-                self.retriever.vector_store.delete_document(doc_id)
-            except Exception:
-                pass
-
-            # 2. Delete from BM25 index and rebuild
-            try:
-                self.retriever.bm25_retriever.delete_document(filename)
-            except Exception:
-                pass
-
-            # 3. Remove from indexed_files registry
             del self.indexed_files[filename]
             return True
         return False
+
+    def clear_memory(self) -> None:
+        """Clears conversation memory without purging indexed documents."""
+        self.memory.clear()
 
     def clear_all(self) -> None:
         """Clears all indexed documents, vector collections, BM25 indices, and conversation memory."""
@@ -218,3 +223,4 @@ class DocAIPipeline:
     def clear(self) -> None:
         """Alias for clear_all."""
         self.clear_all()
+

@@ -15,13 +15,16 @@ from src.ingestion.chunker import DocumentChunk
 class VectorStore:
     """Manages the local ChromaDB vector store collection for dense semantic search with auto-healing resilience."""
 
-    def __init__(self, persist_directory: str = CHROMA_PERSIST_DIR, collection_name: str = "docai_knowledge_base"):
+    def __init__(self, persist_directory: Optional[str] = CHROMA_PERSIST_DIR, collection_name: str = "docai_knowledge_base"):
         self.persist_directory = persist_directory
         self.collection_name = collection_name
-        Path(self.persist_directory).mkdir(parents=True, exist_ok=True)
 
-        # Initialize persistent client
-        self.client = chromadb.PersistentClient(path=self.persist_directory)
+        # Initialize client: in-memory if persist_directory is None or ':memory:', otherwise persistent
+        if self.persist_directory and self.persist_directory != ":memory:":
+            Path(self.persist_directory).mkdir(parents=True, exist_ok=True)
+            self.client = chromadb.PersistentClient(path=self.persist_directory)
+        else:
+            self.client = chromadb.EphemeralClient()
 
         # Use ChromaDB's high-speed ONNX all-MiniLM-L6-v2 embedding function
         self.embedding_fn = embedding_functions.DefaultEmbeddingFunction()
@@ -134,16 +137,19 @@ class VectorStore:
 
         return formatted_results
 
-    def delete_document(self, doc_id: str) -> None:
-        """Removes all chunks associated with a specific document ID."""
+    def delete_document(self, doc_identifier: str) -> None:
+        """Removes all chunks associated with a specific document (by filename or doc_id)."""
+        coll = self.valid_collection
+        # Try deleting by source_file first
         try:
-            self.valid_collection.delete(where={"doc_id": doc_id})
+            coll.delete(where={"source_file": doc_identifier})
         except Exception:
-            self._ensure_collection()
-            try:
-                self.collection.delete(where={"doc_id": doc_id})
-            except Exception:
-                pass
+            pass
+        # Try deleting by doc_id as well
+        try:
+            coll.delete(where={"doc_id": doc_identifier})
+        except Exception:
+            pass
 
     def count(self) -> int:
         """Returns total chunk count in the collection."""
@@ -153,17 +159,15 @@ class VectorStore:
             return self._ensure_collection().count()
 
     def clear(self) -> None:
-        """Clears all entries from the current collection without destroying the collection handle."""
+        """Clears all entries from the current collection completely."""
         try:
-            coll = self.valid_collection
-            count = coll.count()
-            if count > 0:
+            self.client.delete_collection(name=self.collection_name)
+        except Exception:
+            try:
+                coll = self.valid_collection
                 all_ids = coll.get()["ids"]
                 if all_ids:
                     coll.delete(ids=all_ids)
-        except Exception:
-            try:
-                self.client.delete_collection(name=self.collection_name)
             except Exception:
                 pass
-            self._ensure_collection()
+        self._ensure_collection()

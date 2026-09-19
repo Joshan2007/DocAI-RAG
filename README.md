@@ -45,7 +45,7 @@ flowchart TD
     subgraph GENERATION_EVAL["4. LLM Synthesis & Telemetry Engine"]
         TOP_CHUNKS --> PROMPT_ENG["Strict Grounded Prompt Engineer\n(Forces <thought> reasoning + [Doc: Page] citations)"]
         USER_Q --> PROMPT_ENG
-        PROMPT_ENG --> GEMINI{"Google Gemini Engine\n(1.5 Flash / 2.0 Flash / 1.5 Pro / 2.5 Flash)"}
+        PROMPT_ENG --> GEMINI{"Google Gemini Engine\n(2.0 Flash / 1.5 Flash / 1.5 Pro)"}
         GEMINI -- "Rate Limit 429" --> ROTATE["Automatic Model Rollover / Local Synthesizer"]
         GEMINI -- "Success" --> STREAM["Streamed Generation\n(retrieval_complete -> token -> generation_complete)"]
         ROTATE --> STREAM
@@ -101,9 +101,9 @@ Score normalization across different retrieval modalities (e.g. cosine similarit
 - **Dynamic Reasoning Extraction**: Modern models produce higher quality, better grounded answers when allowed to reason through evidence before speaking. DocAI instructs Gemini via system prompts to formulate an explicit thought trace inside `<thought>...</thought>` tags.
 - **Streaming Generation**: The pipeline exposes retrieval metadata, answer tokens, and final evaluation directly to Streamlit while keeping document retrieval and answer generation in one process.
 - **Pure Google Gemini Architecture**: Configured for high-throughput, low-latency reasoning across current Gemini models:
-  - **Gemini 2.5 Flash** (Default • Recommended general assistant)
-  - **Gemini 2.5 Pro** (Deep reasoning for complex multi-document synthesis)
-  - **Gemini 2.0 Flash** (High-speed multimodal reasoning)
+  - **Gemini 2.0 Flash** (Default • High-speed multimodal reasoning)
+  - **Gemini 1.5 Flash** (Standard • Fast, lightweight general assistant)
+  - **Gemini 1.5 Pro** (Deep reasoning for complex multi-document synthesis)
 
 ---
 

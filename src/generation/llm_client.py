@@ -4,6 +4,7 @@ Features automatic model fallback retry upon 404/deprecation errors.
 """
 
 import os
+import re
 import time
 from typing import Generator, Optional, List, Dict, Any
 
@@ -248,12 +249,12 @@ class LLMClient:
                 time.sleep(0.01)
             return
 
-        # 4. Extract and rank sentences from retrieved chunks
+        # 4. Extract and rank sentences from retrieved chunks based strictly on query relevance
         stopwords = {
             "what", "is", "are", "the", "a", "an", "in", "on", "of", "for", "to",
             "and", "or", "about", "this", "that", "it", "can", "you", "me", "please",
             "tell", "explain", "describe", "show", "give", "how", "why", "when", "where",
-            "does", "do", "did", "with", "from", "at", "by", "as", "be", "all"
+            "does", "do", "did", "with", "from", "at", "by", "as", "be", "all", "which"
         }
         clean_q = re.sub(r'[^a-zA-Z0-9\s]', ' ', query_str.lower())
         q_terms = [t for t in clean_q.split() if t not in stopwords and len(t) > 2]
@@ -261,7 +262,7 @@ class LLMClient:
         ranked_sentences = []
         doc_page_map = {}
 
-        for c in chunks[:6]:
+        for chunk_idx, c in enumerate(chunks[:6]):
             src = c.metadata.get("source_file", "Document") if hasattr(c, "metadata") else "Document"
             pg = c.metadata.get("page_number", 1) if hasattr(c, "metadata") else 1
             doc_page_map.setdefault(src, set()).add(pg)
@@ -272,9 +273,9 @@ class LLMClient:
                 score = 0
                 for term in q_terms:
                     if term in line_lower:
-                        score += 3
-                if any(w in line_lower for w in ["problem", "statement", "objective", "requirement", "task", "assignment", "round", "evaluation", "architecture"]):
-                    score += 2
+                        score += 4
+                # Position prior: earlier retrieved chunks scored higher by RRF
+                score += max(0, 3 - chunk_idx)
                 if score > 0 or len(q_terms) == 0:
                     ranked_sentences.append((score, line, src, pg))
 
@@ -290,22 +291,21 @@ class LLMClient:
                 seen_texts.add(normalized)
                 unique_sentences.append((score, text, src, pg))
 
-        # Format structured findings
+        # Format structured findings directly addressing the user's question
         response_blocks = []
 
         if unique_sentences:
-            top_passages = [s[1] for s in unique_sentences[:2]]
-            response_blocks.append("### Answer\n" + " ".join(top_passages) + "\n\n")
+            top_passages = [s[1] for s in unique_sentences[:3]]
+            response_blocks.append("### Answer\n" + "\n\n".join(top_passages) + "\n\n")
 
-            if len(unique_sentences) > 2:
-                response_blocks.append("### Key Details & Specifications\n")
-                for _, text, src, pg in unique_sentences[2:7]:
+            if len(unique_sentences) > 3:
+                response_blocks.append("### Relevant Excerpts\n")
+                for _, text, src, pg in unique_sentences[3:7]:
                     clean_text = text.lstrip("-*• ")
-                    header_candidate = clean_text[:45].split(':')[0].strip()
-                    response_blocks.append(f"- **{header_candidate}**: {clean_text}\n")
+                    response_blocks.append(f"- {clean_text} *(from {src}, p. {pg})*\n")
                 response_blocks.append("\n")
         else:
-            response_blocks.append("### Extracted Relevant Content\n")
+            response_blocks.append("### Relevant Excerpts\n")
             for c in chunks[:3]:
                 src = c.metadata.get("source_file", "Document")
                 pg = c.metadata.get("page_number", 1)
@@ -409,8 +409,23 @@ class LLMClient:
             )
 
     def contextualize_query(self, history: List[Dict[str, str]], query: str) -> str:
-        """Rewrites a conversational follow-up query into a standalone search query."""
+        """Rewrites a conversational follow-up query into a standalone search query when needed."""
         if not history or len(history) == 0:
+            return query
+
+        # Only contextualize if the query is an ambiguous follow-up or contains pronouns
+        q_lower = query.lower().strip()
+        follow_up_cues = {
+            "it", "they", "them", "this", "that", "these", "those", "their", "its",
+            "he", "she", "his", "her", "why", "how so", "what about", "explain more",
+            "tell me more", "and", "also", "same", "above", "mentioned", "earlier", "previous"
+        }
+        words = re.findall(r"\b\w+\b", q_lower)
+        has_cue = any(word in follow_up_cues for word in words)
+        is_short = len(words) <= 4
+
+        # If it's a self-contained query with no pronoun cues, don't rewrite to avoid drift
+        if not has_cue and not is_short and len(words) >= 5:
             return query
 
         reformulate_prompt = RAGPromptManager.build_query_reformulation_prompt(history, query)

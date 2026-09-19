@@ -29,7 +29,7 @@ RRF_K = int(os.getenv("RRF_K", 60))  # Standard constant for Reciprocal Rank Fus
 
 # LLM Configuration
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-DEFAULT_LLM_MODEL = os.getenv("DEFAULT_MODEL", "gemini-2.5-flash")
-FALLBACK_MODELS = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"]
+DEFAULT_LLM_MODEL = os.getenv("DEFAULT_MODEL", "gemini-2.0-flash")
+FALLBACK_MODELS = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
 TEMPERATURE = float(os.getenv("TEMPERATURE", 0.2))  # Low temperature for strict factual grounding
 MAX_OUTPUT_TOKENS = int(os.getenv("MAX_OUTPUT_TOKENS", 1024))
