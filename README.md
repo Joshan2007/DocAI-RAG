@@ -6,6 +6,10 @@
 [![Gemini](https://img.shields.io/badge/LLM-Google%20Gemini%20Flash%20%26%20Pro-4285F4.svg?style=for-the-badge&logo=google)](https://aistudio.google.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 
+## Live Demo
+
+Try DocAI here: [https://docai2007.streamlit.app](https://docai2007.streamlit.app)
+
 **DocAI** is an advanced AI Knowledge Assistant engineered to ingest, index, and query complex multi-domain documents (enterprise policies, scientific research papers, financial spreadsheets, technical specifications, and student coursework) with grounded-answer safeguards, verifiable citations, dynamic real-time reasoning, and retrieval evaluation.
 
 ---
