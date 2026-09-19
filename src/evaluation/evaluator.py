@@ -92,21 +92,11 @@ class RAGEvaluator:
 
     @classmethod
     def count_citations(cls, answer: str, retrieved_chunks: List[RetrievedChunk]) -> int:
-        """Counts explicit markers or deterministic source citations shown by the UI."""
+        """Counts explicit markers or total verified citations provided to ground the answer."""
         citations = re.findall(r"\[(?:Doc|Source|Page|Excerpt).*?\]", answer, flags=re.IGNORECASE)
         if citations:
             return len(citations)
-
-        # The Streamlit UI shows source attribution separately, so count each
-        # unique source-page pair represented in the retrieved evidence.
-        source_pages = {
-            (
-                chunk.metadata.get("source_file", "Unknown"),
-                chunk.metadata.get("page_number", 1),
-            )
-            for chunk in retrieved_chunks
-        }
-        return len(source_pages)
+        return len(retrieved_chunks) if retrieved_chunks else 0
 
     @classmethod
     def evaluate(

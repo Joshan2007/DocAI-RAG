@@ -96,13 +96,14 @@ def render_source_summary(citations: Iterable[Dict[str, Any]]) -> None:
     render_citations(citations)
 
 
-def render_metrics(evaluation: Any) -> None:
+def render_metrics(evaluation: Any, citations: Optional[Iterable[Dict[str, Any]]] = None) -> None:
     if not evaluation:
         return
+    cite_count = len(list(citations)) if citations is not None else getattr(evaluation, "citation_count", 0)
     columns = st.columns(4)
     columns[0].metric("Relevance", f"{evaluation.retrieval_relevance_score:.2f}")
     columns[1].metric("Groundedness", f"{evaluation.groundedness_score:.2f}")
-    columns[2].metric("Citations", evaluation.citation_count)
+    columns[2].metric("Citations", cite_count)
     columns[3].metric("Grounded", "Yes" if evaluation.is_grounded else "Review")
 
 
@@ -233,7 +234,7 @@ for message in messages:
         if message.get("citations"):
             render_source_summary(message["citations"])
         if message.get("evaluation"):
-            render_metrics(message["evaluation"])
+            render_metrics(message["evaluation"], message.get("citations"))
 
 question = st.chat_input("Ask a question about your documents")
 if question:
@@ -268,7 +269,7 @@ if question:
                 thought, answer = render_answer(answer, answer_placeholder)
                 render_reasoning(thought)
                 render_source_summary(citations)
-                render_metrics(evaluation)
+                render_metrics(evaluation, citations)
                 messages.append(
                     {
                         "role": "assistant",
