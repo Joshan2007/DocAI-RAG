@@ -16,15 +16,20 @@ import {
 import MarkdownRenderer from "../components/MarkdownRenderer";
 
 const getApiUrl = (path: string) => {
+  if (typeof window !== "undefined") {
+    const custom = localStorage.getItem("docai_backend_url");
+    if (custom && custom.trim()) {
+      return `${custom.trim().replace(/\/$/, "")}${path}`;
+    }
+    if (
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1"
+    ) {
+      return `http://127.0.0.1:8000${path}`;
+    }
+  }
   if (process.env.NEXT_PUBLIC_API_URL) {
     return `${process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, "")}${path}`;
-  }
-  if (
-    typeof window !== "undefined" &&
-    (window.location.hostname === "localhost" ||
-      window.location.hostname === "127.0.0.1")
-  ) {
-    return `http://127.0.0.1:8000${path}`;
   }
   return path;
 };
@@ -90,24 +95,47 @@ export default function Home() {
   const [geminiApiKey, setGeminiApiKey] = useState("");
   const [isKeyModalOpen, setIsKeyModalOpen] = useState(false);
   const [geminiKeyInput, setGeminiKeyInput] = useState("");
+  const [backendUrl, setBackendUrl] = useState("");
+  const [backendUrlInput, setBackendUrlInput] = useState("");
+  const [isBackendConnected, setIsBackendConnected] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Load API key & selected model from localStorage on mount
+  // Load API key, backend URL & selected model from localStorage on mount
   useEffect(() => {
     const savedGemini = localStorage.getItem("docai_gemini_api_key");
     if (savedGemini) {
       setGeminiApiKey(savedGemini);
       setGeminiKeyInput(savedGemini);
     }
+    const savedBackend = localStorage.getItem("docai_backend_url");
+    if (savedBackend) {
+      setBackendUrl(savedBackend);
+      setBackendUrlInput(savedBackend);
+    }
     const savedModel = localStorage.getItem("docai_selected_model");
     if (savedModel && AVAILABLE_MODELS.some((m) => m.id === savedModel)) {
       setSelectedModel(savedModel);
     }
   }, []);
+
+  // Ping backend health
+  useEffect(() => {
+    const checkHealth = () => {
+      fetch(getApiUrl("/api/health"))
+        .then((res) => {
+          if (res.ok) setIsBackendConnected(true);
+          else setIsBackendConnected(false);
+        })
+        .catch(() => setIsBackendConnected(false));
+    };
+    checkHealth();
+    const timer = setInterval(checkHealth, 15000);
+    return () => clearInterval(timer);
+  }, [backendUrl]);
 
   // Auto scroll
   useEffect(() => {
@@ -168,7 +196,17 @@ export default function Home() {
       }
     } catch (err: any) {
       console.error("Upload failed", err);
-      alert(`Document upload failed: ${err.message || "Could not connect to backend server"}`);
+      const is404 = err.message && err.message.includes("404");
+      if (is404) {
+        alert(
+          "Backend Connection Required:\n\n" +
+          "Your frontend is running on Vercel, but cannot reach the FastAPI backend server.\n\n" +
+          "👉 Click 'Connect Backend' in the top-right header to configure your backend URL (e.g., from Render, Railway, or your local tunnel)."
+        );
+        setIsKeyModalOpen(true);
+      } else {
+        alert(`Document upload failed: ${err.message || "Could not connect to backend server"}`);
+      }
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -389,11 +427,28 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Right Status: API Key Trigger Only (Clean Header) */}
-        <div className="flex items-center gap-3">
+        {/* Right Status: Backend Status & Key Config */}
+        <div className="flex items-center gap-2.5">
           <button
             onClick={() => setIsKeyModalOpen(true)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-medium transition-all ${
+              isBackendConnected
+                ? "bg-[#F3F8F2] border-[#C2E0C6] text-[#2E7D32] hover:bg-[#E8F5E9]"
+                : "bg-[#FFF5F5] border-[#FED7D7] text-[#C53030] hover:bg-[#FEE2E2]"
+            }`}
+            title="Configure Backend Connection & API Keys"
+          >
+            <span
+              className={`w-2 h-2 rounded-full ${
+                isBackendConnected ? "bg-[#2E7D32]" : "bg-[#E53E3E]"
+              }`}
+            ></span>
+            <span>{isBackendConnected ? "Backend Online" : "Connect Backend"}</span>
+          </button>
+
+          <button
+            onClick={() => setIsKeyModalOpen(true)}
+            className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-medium transition-all ${
               geminiApiKey
                 ? "bg-[#F3F8F2] border-[#C2E0C6] text-[#2E7D32] hover:bg-[#E8F5E9]"
                 : "bg-[#FFF9F0] border-[#FCE2BF] text-[#B45309] hover:bg-[#FEF3C7]"
@@ -786,11 +841,39 @@ export default function Home() {
               </button>
             </div>
 
-            <p className="text-xs text-[#6B6963] leading-relaxed">
-              Enter your Google Gemini API key to enable live factual completions. Your key is stored locally in your browser and sent securely only to your local backend.
-            </p>
+            {/* Backend Connection Config */}
+            <div className="space-y-2 p-3 bg-[#FAF8F5] rounded-xl border border-[#ECEAE4]">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-[#1F1E1D]">
+                  Backend Server URL
+                </label>
+                <span
+                  className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${
+                    isBackendConnected
+                      ? "bg-[#E8F5E9] text-[#2E7D32]"
+                      : "bg-[#FFEBEE] text-[#C62828]"
+                  }`}
+                >
+                  {isBackendConnected ? "● Online" : "○ Disconnected"}
+                </span>
+              </div>
+              <input
+                type="text"
+                value={backendUrlInput}
+                onChange={(e) => setBackendUrlInput(e.target.value)}
+                placeholder="https://docai-backend.onrender.com or leave blank for localhost:8000"
+                className="w-full px-3 py-2 rounded-lg border border-[#D5D3CC] focus:border-[#CC785C] focus:ring-1 focus:ring-[#CC785C] outline-none text-xs font-mono bg-white"
+              />
+              <p className="text-[11px] text-[#82807A] leading-relaxed">
+                When deployed on Vercel, connect your FastAPI backend URL (e.g. from Render or local tunnel). Leave empty for <code>localhost:8000</code>.
+              </p>
+            </div>
 
+            {/* Gemini API Key Config */}
             <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-[#1F1E1D] block">
+                Google Gemini API Key
+              </label>
               <input
                 type="password"
                 value={geminiKeyInput}
@@ -832,12 +915,20 @@ export default function Home() {
               </button>
               <button
                 onClick={async () => {
-                  const trimmed = geminiKeyInput.trim();
-                  setGeminiApiKey(trimmed);
-                  if (trimmed) {
-                    localStorage.setItem("docai_gemini_api_key", trimmed);
+                  const trimmedKey = geminiKeyInput.trim();
+                  setGeminiApiKey(trimmedKey);
+                  if (trimmedKey) {
+                    localStorage.setItem("docai_gemini_api_key", trimmedKey);
                   } else {
                     localStorage.removeItem("docai_gemini_api_key");
+                  }
+
+                  const trimmedBackend = backendUrlInput.trim();
+                  setBackendUrl(trimmedBackend);
+                  if (trimmedBackend) {
+                    localStorage.setItem("docai_backend_url", trimmedBackend);
+                  } else {
+                    localStorage.removeItem("docai_backend_url");
                   }
 
                   try {
@@ -845,11 +936,21 @@ export default function Home() {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({
-                        gemini_api_key: trimmed || null,
+                        gemini_api_key: trimmedKey || null,
                       }),
                     });
+                  } catch (e) {}
+
+                  // Immediately reload documents from updated backend
+                  try {
+                    const docRes = await fetch(getApiUrl("/api/documents"));
+                    if (docRes.ok) {
+                      const docData = await docRes.json();
+                      if (docData.documents) setAttachedFiles(docData.documents);
+                      setIsBackendConnected(true);
+                    }
                   } catch (e) {
-                    // Ignore background sync errors
+                    setIsBackendConnected(false);
                   }
 
                   setIsKeyModalOpen(false);
