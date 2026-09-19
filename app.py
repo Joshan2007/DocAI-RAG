@@ -134,7 +134,7 @@ with st.sidebar:
     model_name = st.selectbox("Generation model", AVAILABLE_MODELS, index=0)
 
     # Sync API key and model dynamically without recreating pipeline
-    pipeline.llm.set_api_key(api_key or None)
+    pipeline.llm.set_api_key(api_key)
     pipeline.llm.set_model(model_name)
 
     show_sources = st.checkbox(

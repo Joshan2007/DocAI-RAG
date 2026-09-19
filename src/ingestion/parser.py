@@ -57,19 +57,25 @@ class DocumentParser:
             return ""
         # Replace non-breaking spaces and tabs
         text = text.replace("\xa0", " ").replace("\t", " ")
-        # Replace 3 or more newlines with 2
-        text = re.sub(r"\n{3,}", "\n\n", text)
+        # Sanitize Private Use Area characters and custom PDF bullets
+        text = re.sub(r'[\ue000-\uf8ff]', ' ', text)
+        text = text.replace("•", "*").replace("●", "*").replace("▪", "*")
+        # Normalize multiple newlines with optional spaces in between
+        text = re.sub(r"(\n\s*){2,}", "\n\n", text)
         # Replace multiple horizontal spaces with single space
         text = re.sub(r"[ ]{2,}", " ", text)
         return text.strip()
 
     def parse_pdf(self, file_source: Union[str, Path, io.BytesIO], filename: str) -> ParsedDocument:
-        """Parses a PDF document page by page."""
+        """Parses a PDF document page by page using layout mode for coherent sentence extraction."""
         reader = pypdf.PdfReader(file_source)
         pages: List[DocumentPage] = []
 
         for idx, page in enumerate(reader.pages):
-            raw_text = page.extract_text() or ""
+            try:
+                raw_text = page.extract_text(extraction_mode="layout") or ""
+            except Exception:
+                raw_text = page.extract_text() or ""
             cleaned = self.clean_text(raw_text)
             if cleaned:
                 pages.append(DocumentPage(page_number=idx + 1, text=cleaned))

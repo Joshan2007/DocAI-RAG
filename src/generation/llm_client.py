@@ -34,8 +34,7 @@ class LLMClient:
 
     def set_api_key(self, api_key: Optional[str] = None) -> None:
         """Dynamically updates the Gemini API key and synchronizes client instance."""
-        if api_key is not None:
-            self.api_key = api_key.strip()
+        self.api_key = (api_key or "").strip()
         self.provider = "gemini" if self.api_key else "mock"
         self._init_client()
 
@@ -221,7 +220,17 @@ class LLMClient:
                 "> 💡 **To restore generative LLM reasoning immediately**:\n"
                 "> 1. Open [Google AI Studio](https://aistudio.google.com/apikey).\n"
                 "> 2. Click **Create API key** and select **Create in NEW project** (each new project gets a fresh 1,500 req/day quota!).\n"
-                "> 3. Click the **Key icon (🔑)** in the top bar and paste your new key.\n\n"
+                "> 3. Paste your new key into the sidebar.\n\n"
+            )
+            for w in banner.split(" "):
+                yield w + " "
+                time.sleep(0.004)
+        elif error_msg:
+            banner = (
+                "> [!WARNING]\n"
+                f"> **Gemini API Notice: {error_msg[:120]}**\n"
+                ">\n"
+                "> DocAI has activated the **Local Grounded Synthesizer** using Hybrid Retrieval (ChromaDB + BM25) to answer directly from your uploaded document.\n\n"
             )
             for w in banner.split(" "):
                 yield w + " "
@@ -232,7 +241,7 @@ class LLMClient:
                 f"> **Local Grounded Mode (No Gemini API Key Configured)**\n"
                 f">\n"
                 f"> Operating in Local Grounded Mode for `{self.model_name}`. Excerpts are retrieved via Hybrid Search (Dense ChromaDB + Sparse BM25) and synthesized directly.\n"
-                f"> *(Add your `GEMINI_API_KEY` via the top-right 🔑 icon to enable live Gemini completions)*.\n\n"
+                f"> *(Enter your `GEMINI_API_KEY` in the sidebar to enable live Gemini AI reasoning)*.\n\n"
             )
             for w in banner.split(" "):
                 yield w + " "
@@ -242,84 +251,113 @@ class LLMClient:
         if not chunks:
             msg = (
                 "No relevant document passages were found in the current index to answer this query. "
-                "Please attach one or more documents (PDF, Word, Excel, CSV, TXT) using the paperclip icon to query your documents."
+                "Please attach one or more documents (PDF, Word, Excel, CSV, TXT) using the file uploader in the sidebar."
             )
             for w in msg.split(" "):
                 yield w + " "
                 time.sleep(0.01)
             return
 
-        # 4. Extract and rank sentences from retrieved chunks based strictly on query relevance
+        # 4. Intent detection and grounded synthesis
         stopwords = {
             "what", "is", "are", "the", "a", "an", "in", "on", "of", "for", "to",
             "and", "or", "about", "this", "that", "it", "can", "you", "me", "please",
             "tell", "explain", "describe", "show", "give", "how", "why", "when", "where",
-            "does", "do", "did", "with", "from", "at", "by", "as", "be", "all", "which"
+            "does", "do", "did", "with", "from", "at", "by", "as", "be", "all", "which",
+            "document", "documents", "doc", "docs", "pdf", "file", "files", "pls",
+            "summarize", "summary", "overview", "detail", "details", "content", "contents",
+            "brief", "read", "check", "paper", "say", "says"
         }
         clean_q = re.sub(r'[^a-zA-Z0-9\s]', ' ', query_str.lower())
         q_terms = [t for t in clean_q.split() if t not in stopwords and len(t) > 2]
 
-        # Synonym expansion for metadata and common question intents
-        if any(t in q_terms or t in clean_q for t in ["wrote", "author", "creator", "writer", "who"]):
-            q_terms.extend(["author", "written", "by", "instructor", "prof", "professor", "dr", "prepared", "creator"])
-        elif any(t in q_terms or t in clean_q for t in ["title", "about"]):
-            q_terms.extend(["title", "course", "specification", "policy", "overview", "introduction"])
-
-        ranked_sentences = []
         doc_page_map = {}
-
-        for chunk_idx, c in enumerate(chunks[:6]):
+        for c in chunks[:6]:
             src = c.metadata.get("source_file", "Document") if hasattr(c, "metadata") else "Document"
             pg = c.metadata.get("page_number", 1) if hasattr(c, "metadata") else 1
             doc_page_map.setdefault(src, set()).add(pg)
 
-            # Split into natural paragraphs/lines first to avoid breaking titles/honorifics
-            raw_lines = [line.strip() for line in c.text.split('\n') if line.strip()]
-            lines = []
-            for raw in raw_lines:
-                if len(raw) <= 300:
-                    lines.append(raw)
-                else:
-                    sub_sentences = [s.strip() for s in re.split(r'\.\s+', raw) if len(s.strip()) > 15]
-                    lines.extend(sub_sentences)
-
-            for line in lines:
-                line_lower = line.lower()
-                term_matches = sum(1 for term in q_terms if term in line_lower)
-                if term_matches > 0:
-                    score = (term_matches * 5) + max(0, 3 - chunk_idx)
-                    ranked_sentences.append((score, line, src, pg))
-
-        # Sort by relevance score descending
-        ranked_sentences.sort(key=lambda x: x[0], reverse=True)
-
-        # Deduplicate sentences while preserving high scores
-        seen_texts = set()
-        unique_sentences = []
-        for score, text, src, pg in ranked_sentences:
-            normalized = re.sub(r'\W+', '', text.lower())[:60]
-            if normalized not in seen_texts:
-                seen_texts.add(normalized)
-                unique_sentences.append((score, text, src, pg))
-
-        # Format structured findings directly addressing the user's question
         response_blocks = []
 
-        if unique_sentences:
-            top_passages = [s[1] for s in unique_sentences[:3]]
-            response_blocks.append("### Answer\n" + "\n\n".join(top_passages) + "\n\n")
+        is_author_query = any(k in clean_q for k in [
+            "who wrote", "author", "creator", "written by", "who made",
+            "company", "organization", "issuer", "publisher", "who prepared", "who published"
+        ])
+        is_overview_query = (
+            len(q_terms) == 0 or
+            any(k in clean_q for k in ["explain", "summarize", "summary", "overview", "what is this", "tell me about", "what does this document"])
+        )
 
-            if len(unique_sentences) > 3:
-                response_blocks.append("### Relevant Excerpts\n")
-                for _, text, src, pg in unique_sentences[3:7]:
-                    clean_text = text.lstrip("-*• ")
-                    response_blocks.append(f"- {clean_text} *(from {src}, p. {pg})*\n")
-                response_blocks.append("\n")
-        else:
+        # 4a. Authorship intent
+        if is_author_query:
+            for c in chunks[:5]:
+                src = c.metadata.get("source_file", "Document") if hasattr(c, "metadata") else "Document"
+                pg = c.metadata.get("page_number", 1) if hasattr(c, "metadata") else 1
+                for line in c.text.split('\n'):
+                    l = line.strip()
+                    if re.search(r'\b(technologies private limited|technologies|private limited|pvt ltd|ltd|inc|corp|university|author:|prepared by|issued by)\b', l, re.IGNORECASE):
+                        response_blocks.append(
+                            f"### Answer\n\nBased on the document (**{src}**, Page {pg}), this document was issued and prepared by **{l}**.\n\n"
+                        )
+                        break
+                if response_blocks:
+                    break
+
+        # 4b. Overview intent
+        if not response_blocks and is_overview_query:
+            meaningful_lines = []
+            for c in chunks[:4]:
+                for line in c.text.split('\n'):
+                    l = line.strip().lstrip("-*• ")
+                    if len(l.split()) >= 4 and len(l) >= 20 and not l.isdigit():
+                        if l not in meaningful_lines:
+                            meaningful_lines.append(l)
+            top_src = chunks[0].metadata.get("source_file", "Document") if hasattr(chunks[0], "metadata") else "Document"
+            bullets = "\n".join(f"- {l}" for l in meaningful_lines[:6])
             response_blocks.append(
-                f"The active document excerpts do not contain explicit information answering **'{query_str}'**.\n\n"
-                "Please verify your question or ensure your Gemini API key is configured for complete generative synthesis.\n\n"
+                f"### Document Overview\n\nThis document (**{top_src}**) outlines the following details:\n\n{bullets}\n\n"
             )
+
+        # 4c. Factual query
+        if not response_blocks:
+            ranked_sentences = []
+            for chunk_idx, c in enumerate(chunks[:6]):
+                src = c.metadata.get("source_file", "Document") if hasattr(c, "metadata") else "Document"
+                pg = c.metadata.get("page_number", 1) if hasattr(c, "metadata") else 1
+                paragraphs = [p.strip() for p in re.split(r'\n{2,}', c.text) if p.strip()]
+                for para in paragraphs:
+                    sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+|\n+', para) if len(s.strip().split()) >= 5 and len(s.strip()) >= 25]
+                    for s in sentences:
+                        s_lower = s.lower()
+                        matches = sum(1 for term in q_terms if re.search(rf"\b{re.escape(term)}\b", s_lower))
+                        if matches > 0:
+                            score = (matches * 6) + max(0, 3 - chunk_idx)
+                            ranked_sentences.append((score, s, src, pg))
+
+            ranked_sentences.sort(key=lambda x: x[0], reverse=True)
+            seen_texts = set()
+            unique_sentences = []
+            for score, text, src, pg in ranked_sentences:
+                normalized = re.sub(r'\W+', '', text.lower())[:60]
+                if normalized not in seen_texts:
+                    seen_texts.add(normalized)
+                    unique_sentences.append((score, text, src, pg))
+
+            if unique_sentences:
+                top_passages = [s[1] for s in unique_sentences[:3]]
+                response_blocks.append("### Answer\n" + "\n\n".join(top_passages) + "\n\n")
+
+                if len(unique_sentences) > 3:
+                    response_blocks.append("### Relevant Excerpts\n")
+                    for _, text, src, pg in unique_sentences[3:7]:
+                        clean_text = text.lstrip("-*• ")
+                        response_blocks.append(f"- {clean_text} *(from {src}, p. {pg})*\n")
+                    response_blocks.append("\n")
+            else:
+                response_blocks.append(
+                    f"The active document excerpts do not contain explicit information answering **'{query_str}'**.\n\n"
+                    "Please verify your question or configure your Gemini API key in the sidebar for complete generative synthesis.\n\n"
+                )
 
         # Sources Section
         response_blocks.append("### Sources\n")

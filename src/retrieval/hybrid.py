@@ -104,17 +104,22 @@ class HybridRetriever:
                     "in_sparse": True,
                 }
 
-        # 3. Document metadata & authorship booster
+        # 3. Document metadata, authorship & overview booster
         q_lower = query.lower()
-        is_metadata_query = any(k in q_lower for k in [
+        is_metadata_or_overview_query = any(k in q_lower for k in [
             "who wrote", "author", "creator", "written by", "who made",
-            "instructor", "prof", "who is", "what is this", "title", "about"
+            "instructor", "prof", "who is", "what is this", "title", "about",
+            "explain", "summary", "summarize", "overview", "what does this",
+            "tell me about", "what is the document", "describe this", "brief",
+            "who prepared", "company", "organization"
         ])
-        if is_metadata_query:
-            # Add opening header chunks (chunk_index 0) of documents if not present
+        if is_metadata_or_overview_query:
+            # Add opening header chunks (chunk_index 0 and 1) of documents if not present
             for c in self.bm25_retriever.chunks:
-                if c.chunk_index == 0:
-                    boost = 1.0 / (rrf_constant + 1)
+                if c.chunk_index in (0, 1):
+                    # Give chunk 0 a stronger boost and chunk 1 a secondary boost
+                    rank_offset = 1 if c.chunk_index == 0 else 2
+                    boost = 1.0 / (rrf_constant + rank_offset)
                     if c.chunk_id in candidates:
                         candidates[c.chunk_id]["rrf_score"] += boost
                     else:
@@ -126,7 +131,7 @@ class HybridRetriever:
                             "dense_score": None,
                             "dense_rank": None,
                             "bm25_score": 1.0,
-                            "bm25_rank": 1,
+                            "bm25_rank": rank_offset,
                             "in_dense": False,
                             "in_sparse": True,
                         }
