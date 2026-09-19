@@ -8,6 +8,8 @@ import io
 import os
 import re
 import sys
+import tempfile
+import uuid
 from pathlib import Path
 from typing import Any, Dict, Iterable
 
@@ -31,8 +33,12 @@ SUPPORTED_EXTENSIONS = ["pdf", "docx", "xlsx", "xls", "csv", "tsv", "md", "txt",
 
 
 @st.cache_resource(show_spinner="Loading DocAI retrieval engine...")
-def get_pipeline(api_key: str, model_name: str) -> DocAIPipeline:
-    pipeline = DocAIPipeline(api_key=api_key or None)
+def get_pipeline(api_key: str, model_name: str, session_id: str) -> DocAIPipeline:
+    session_directory = Path(tempfile.gettempdir()) / "docai_streamlit" / session_id
+    pipeline = DocAIPipeline(
+        api_key=api_key or None,
+        persist_directory=str(session_directory),
+    )
     pipeline.llm.set_model(model_name)
     return pipeline
 
@@ -146,7 +152,8 @@ with st.sidebar:
     )
     clear_documents = st.button("Clear indexed documents", use_container_width=True)
 
-pipeline = get_pipeline(api_key, model_name)
+session_id = st.session_state.setdefault("session_id", uuid.uuid4().hex)
+pipeline = get_pipeline(api_key, model_name, session_id)
 
 if clear_documents:
     pipeline.clear_all()

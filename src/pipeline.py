@@ -11,6 +11,7 @@ from typing import List, Dict, Any, Optional, Union, Generator
 from src.ingestion.parser import DocumentParser, ParsedDocument
 from src.ingestion.chunker import DocumentChunker, DocumentChunk
 from src.retrieval.hybrid import HybridRetriever, RetrievedChunk
+from src.retrieval.vector_store import VectorStore
 from src.generation.llm_client import LLMClient
 from src.generation.prompts import RAGPromptManager
 from src.generation.memory import ConversationMemory
@@ -20,10 +21,11 @@ from src.evaluation.evaluator import RAGEvaluator, EvaluationResult
 class DocAIPipeline:
     """End-to-end pipeline orchestrating document processing, hybrid retrieval, and answer generation."""
 
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: Optional[str] = None, persist_directory: Optional[str] = None):
         self.parser = DocumentParser()
         self.chunker = DocumentChunker()
-        self.retriever = HybridRetriever()
+        vector_store = VectorStore(persist_directory=persist_directory) if persist_directory else None
+        self.retriever = HybridRetriever(vector_store=vector_store)
         self.llm = LLMClient(api_key=api_key)
         self.memory = ConversationMemory()
         self.indexed_files: Dict[str, Dict[str, Any]] = {}
