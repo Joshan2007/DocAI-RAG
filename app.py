@@ -74,16 +74,17 @@ def render_reasoning(thought: str) -> None:
 def render_citations(citations: Iterable[Dict[str, Any]]) -> None:
     citations = list(citations)
     if not citations:
-        st.info("No source passages were retrieved for this answer.")
         return
 
-    for index, citation in enumerate(citations, start=1):
-        source = citation.get("source", "Unknown source")
-        page = citation.get("page", 1)
-        score = citation.get("score", 0)
-        with st.expander(f"{index}. {source} · page {page} · score {score}"):
+    with st.expander(f"Sources ({len(citations)})", expanded=False):
+        for index, citation in enumerate(citations, start=1):
+            source = citation.get("source", "Unknown source")
+            page = citation.get("page", 1)
+            score = citation.get("score", 0)
+            excerpt = re.sub(r"\s+", " ", citation.get("text_snippet", "")).strip()
+            st.markdown(f"**{index}. {source}** · page {page} · score {score}")
             st.caption(citation.get("retrieval_method", "hybrid retrieval"))
-            st.write(citation.get("text_snippet", ""))
+            st.write(excerpt)
 
 
 def render_metrics(evaluation: Any) -> None:
@@ -109,6 +110,11 @@ with st.sidebar:
         help="For Streamlit Cloud, add GEMINI_API_KEY in App settings > Secrets.",
     ).strip()
     model_name = st.selectbox("Generation model", AVAILABLE_MODELS)
+    show_sources = st.checkbox(
+        "Show source excerpts",
+        value=False,
+        help="Keep this off for a cleaner conversation. Sources remain available when enabled.",
+    )
 
     if api_key:
         st.success("Gemini enabled")
@@ -158,9 +164,8 @@ for message in messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
         render_reasoning(message.get("thinking", ""))
-        if message.get("citations"):
-            with st.expander("Sources"):
-                render_citations(message["citations"])
+        if show_sources and message.get("citations"):
+            render_citations(message["citations"])
         if message.get("evaluation"):
             render_metrics(message["evaluation"])
 
@@ -193,9 +198,8 @@ if question:
         if answer:
             thought, answer = render_answer(answer, answer_placeholder)
             render_reasoning(thought)
-            if citations:
-                with st.expander("Sources"):
-                    render_citations(citations)
+            if show_sources and citations:
+                render_citations(citations)
             render_metrics(evaluation)
             messages.append(
                 {
