@@ -245,5 +245,15 @@ Visitors paste their own Gemini API key into the sidebar. To provide a default k
 
 ---
 
+## 🛠️ AI Tools & Technologies Used
+
+- **Google Gemini API (`google-genai` SDK)**: Powers live generative answer synthesis, structured reasoning trace extraction (`<thought>...</thought>`), and conversational query reformulation using Gemini 2.5 Flash, 2.0 Flash, and 2.5 Pro models.
+- **Hugging Face Sentence-Transformers**: Employs the `all-MiniLM-L6-v2` dense embedding model (384-dimensional vectors) for high-performance semantic retrieval.
+- **Rank-BM25**: Implements BM25Okapi lexical retrieval for exact-match technical precision across acronyms, code identifiers, and numbers.
+- **ChromaDB**: Vector database powering dense semantic storage with cosine distance metrics in isolated session memory.
+- **Google Antigravity**: Autonomous AI coding assistant utilized for system architecture design, test-driven development, and pipeline optimization.
+
+---
+
 ## 📄 License
 This project is open-source under the [MIT License](LICENSE).
