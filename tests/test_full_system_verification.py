@@ -218,6 +218,11 @@ class TestDocAISystemVerification:
 
         with urllib.request.urlopen(req) as resp:
             assert resp.status == 200
-            raw_stream = resp.read(2048).decode("utf-8", errors="ignore")
+            import http.client
+            try:
+                raw_bytes = resp.read()
+            except http.client.IncompleteRead as e:
+                raw_bytes = e.partial
+            raw_stream = raw_bytes.decode("utf-8", errors="ignore")
             assert "event: " in raw_stream
             assert "data: " in raw_stream

@@ -46,7 +46,7 @@ class TestDocAIIngestion:
         parser = DocumentParser()
         parsed = parser.parse(str(doc_file))
         assert parsed.file_type == "docx"
-        assert "Lunorsoft Specifications" in parsed.pages[0].text
+        assert "Platform Engineering Specifications" in parsed.pages[0].text
         assert "Header 1 | Header 2" in parsed.pages[0].text
 
     def test_parser_csv(self, tmp_path):

@@ -29,7 +29,7 @@ BT
 (DocAI Engineering Specification - Page 1) Tj
 /F1 12 Tf
 0 -40 Td
-(This document describes the Lunorsoft Hybrid RAG Architecture.) Tj
+(This document describes the DocAI Hybrid RAG Architecture.) Tj
 0 -25 Td
 (Section 1: Dense embeddings capture conceptual relationships.) Tj
 0 -25 Td
